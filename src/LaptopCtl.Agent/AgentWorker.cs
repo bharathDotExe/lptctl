@@ -111,8 +111,8 @@ public sealed class AgentWorker : BackgroundService
 
             _log.LogDebug("Received message type={Type} requestId={RequestId}", msg.Type, msg.RequestId);
 
-            // Replay protection: reject messages older than 5 minutes
-            if (msg.ExpiresAt < DateTimeOffset.UtcNow)
+            // Replay protection: only reject if message is truly ancient (older than 1 hour) to tolerate clock skew
+            if (msg.ExpiresAt < DateTimeOffset.UtcNow.AddHours(-1))
             {
                 _log.LogWarning("Rejecting expired message requestId={RequestId}", msg.RequestId);
                 continue;

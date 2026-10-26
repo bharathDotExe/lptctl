@@ -17,6 +17,12 @@ public static class InteractiveLauncher
     [DllImport("wtsapi32.dll", SetLastError = true)]
     private static extern uint WTSGetActiveConsoleSessionId();
 
+    [DllImport("kernel32.dll", SetLastError = true)]
+    private static extern IntPtr OpenProcess(uint processAccess, bool bInheritHandle, int processId);
+
+    [DllImport("advapi32.dll", SetLastError = true)]
+    private static extern bool OpenProcessToken(IntPtr ProcessHandle, uint DesiredAccess, out IntPtr TokenHandle);
+
     [DllImport("wtsapi32.dll", SetLastError = true)]
     private static extern bool WTSQueryUserToken(uint sessionId, out IntPtr phToken);
 
@@ -218,17 +224,10 @@ public static class InteractiveLauncher
         // Build command line to execute inside the user session
         string commandLine = BuildUserCommandLine(target);
 
-        // Attempt 1: Windows API CreateProcessAsUser
-        if (sessionId > 0 && TryCreateProcessAsUser(sessionId, commandLine, out var procError))
+        // Attempt: Windows API CreateProcessAsUser
+        if (TryCreateProcessAsUser(sessionId, commandLine, out var procError))
         {
             output = $"[LaptopCtl Interactive] Successfully executed on user screen!\nAction: {target}\nUser: {userName}\nSession: {sessionId}";
-            return true;
-        }
-
-        // Attempt 2: Task Scheduler interactive launch (/IT /RU)
-        if (!string.IsNullOrEmpty(userName) && TryTaskSchedulerInteractive(userName, commandLine, out var taskError))
-        {
-            output = $"[LaptopCtl Interactive] Successfully executed on user screen via Task Scheduler!\nAction: {target}\nUser: {userName}\nSession: {sessionId}";
             return true;
         }
 
@@ -440,11 +439,30 @@ public static class InteractiveLauncher
 
         try
         {
-            if (!WTSQueryUserToken((uint)sessionId, out hUserToken))
+            // 1. Primary strategy: Open token directly from active explorer.exe process
+            var explorer = Process.GetProcessesByName("explorer").FirstOrDefault();
+            if (explorer != null)
             {
-                int err = Marshal.GetLastWin32Error();
-                error = $"WTSQueryUserToken failed: Win32Error {err}";
-                return false;
+                IntPtr hProcess = OpenProcess(0x1000 /* PROCESS_QUERY_LIMITED_INFORMATION */, false, explorer.Id);
+                if (hProcess == IntPtr.Zero)
+                    hProcess = OpenProcess(0x0400 /* PROCESS_QUERY_INFORMATION */, false, explorer.Id);
+
+                if (hProcess != IntPtr.Zero)
+                {
+                    OpenProcessToken(hProcess, MAXIMUM_ALLOWED, out hUserToken);
+                    CloseHandle(hProcess);
+                }
+            }
+
+            // 2. Secondary strategy: WTSQueryUserToken
+            if (hUserToken == IntPtr.Zero)
+            {
+                if (sessionId <= 0 || !WTSQueryUserToken((uint)sessionId, out hUserToken))
+                {
+                    int err = Marshal.GetLastWin32Error();
+                    error = $"Failed to acquire user token (Win32Error {err})";
+                    return false;
+                }
             }
 
             if (!DuplicateTokenEx(hUserToken, MAXIMUM_ALLOWED, IntPtr.Zero, SecurityImpersonation, TokenPrimary, out hPrimaryToken))
