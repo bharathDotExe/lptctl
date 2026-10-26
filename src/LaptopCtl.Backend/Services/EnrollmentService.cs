@@ -72,13 +72,11 @@ public sealed class EnrollmentService
         EnrollmentRequest request, string? ipAddress, CancellationToken ct = default)
     {
         var code = await _db.EnrollmentCodes
-            .Include(c => c.Owner)
             .FirstOrDefaultAsync(c =>
                 c.Code == request.EnrollmentCode &&
-                !c.IsUsed &&
-                c.ExpiresAt > DateTimeOffset.UtcNow, ct);
+                !c.IsUsed, ct);
 
-        if (code is null)
+        if (code is null || code.ExpiresAt <= DateTimeOffset.UtcNow)
         {
             _log.LogWarning("Invalid or expired enrollment code from {IP}", ipAddress);
             throw new UnauthorizedAccessException("Invalid or expired enrollment code.");
@@ -86,6 +84,13 @@ public sealed class EnrollmentService
 
         // Mark code as used immediately (single-use)
         code.IsUsed = true;
+
+        var ownerId = code.OwnerId;
+        if (ownerId <= 0)
+        {
+            var admin = await _db.Users.FirstOrDefaultAsync(ct);
+            ownerId = admin?.Id ?? 1;
+        }
 
         // Generate a device token — only returned once, stored as hash
         var rawToken  = Convert.ToBase64String(RandomNumberGenerator.GetBytes(64));
@@ -96,7 +101,7 @@ public sealed class EnrollmentService
         {
             DeviceId         = deviceId,
             DeviceName       = SanitizeName(request.DeviceName),
-            OwnerId          = code.OwnerId,
+            OwnerId          = ownerId,
             DeviceTokenHash  = tokenHash,
             PublicKeyBase64  = request.PublicKeyBase64,
             AgentVersion     = request.AgentVersion,
@@ -109,9 +114,9 @@ public sealed class EnrollmentService
         await _db.SaveChangesAsync(ct);
 
         _log.LogInformation("Device enrolled: {DeviceId} ({Name}) for user {UserId}",
-            deviceId, device.DeviceName, code.OwnerId);
+            deviceId, device.DeviceName, ownerId);
 
-        await _audit.LogAsync(code.OwnerId, "enrollment.device",
+        await _audit.LogAsync(ownerId, "enrollment.device",
             $"Device '{device.DeviceName}' enrolled (ID: {deviceId})",
             true, ipAddress, deviceId: deviceId, ct: ct);
 
