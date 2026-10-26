@@ -110,6 +110,13 @@ document.addEventListener('DOMContentLoaded', async () => {
     loadDevices();
     loadAuditLog();
   }
+
+  // Auto-refresh devices and metrics every 5 seconds so dashboard is always live
+  setInterval(() => {
+    if (state.jwtToken) {
+      loadDevices();
+    }
+  }, 5000);
 });
 
 async function autoAdminLogin() {
