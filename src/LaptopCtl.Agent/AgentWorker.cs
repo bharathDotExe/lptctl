@@ -205,13 +205,21 @@ public sealed class AgentWorker : BackgroundService
             return;
         }
 
-        var entries = await _fileTransfer.ListDirectoryAsync(req.RemotePath, ct);
-        await _backend.SendAsync(new WsMessage
+        try
         {
-            Type      = WsMessageTypes.DiagnosticResult,
-            RequestId = msg.RequestId,
-            Payload   = entries
-        }, ct);
+            var entries = await _fileTransfer.ListDirectoryAsync(req.RemotePath, ct);
+            await _backend.SendAsync(new WsMessage
+            {
+                Type      = WsMessageTypes.DiagnosticResult,
+                RequestId = msg.RequestId,
+                Payload   = entries
+            }, ct);
+        }
+        catch (Exception ex)
+        {
+            _log.LogWarning(ex, "Failed to list directory: {Path}", req.RemotePath);
+            await SendErrorAsync(msg.RequestId, "DIRECTORY_LIST_FAILED", ex.Message, ct);
+        }
     }
 
     private async Task HandleFileGetAsync(WsMessage msg, CancellationToken ct)
@@ -284,23 +292,8 @@ public sealed class AgentWorker : BackgroundService
         var sw = Stopwatch.StartNew();
         var timeout = TimeSpan.FromSeconds(Math.Clamp(req.TimeoutSeconds, 1, 300));
 
-        // Inject interactive helpers into PowerShell session and pass via UTF-16LE EncodedCommand
-        string helperFunctions = """
-function global:open ($target) {
-    $u = (Get-CimInstance Win32_ComputerSystem).UserName
-    if (-not $u) { Start-Process $target; return }
-    schtasks /create /tn 'LptCtl_Open' /tr ("cmd.exe /c start `"`" `"" + $target + "`"") /sc ONCE /st 00:00 /ru $u /it /f | Out-Null
-    schtasks /run /tn 'LptCtl_Open' | Out-Null
-    Start-Sleep -Milliseconds 500
-    schtasks /delete /tn 'LptCtl_Open' /f | Out-Null
-    Write-Host "[Interactive] Opened '$target' for $u"
-}
-Set-Alias -Name browse -Value open -Scope Global -ErrorAction SilentlyContinue
-
-""";
-        string fullScript = helperFunctions + "\n" + req.Command + (string.IsNullOrEmpty(req.Arguments) ? "" : " " + req.Arguments);
-        string encodedCommand = Convert.ToBase64String(Encoding.Unicode.GetBytes(fullScript));
-
+        string commandToRun = req.Command + (string.IsNullOrEmpty(req.Arguments) ? "" : " " + req.Arguments);
+        string encodedCommand = Convert.ToBase64String(Encoding.Unicode.GetBytes(commandToRun));
         var psi = new ProcessStartInfo
         {
             FileName = "powershell.exe",

@@ -345,10 +345,10 @@
           <div class="card">
             <!-- Quick Location Shortcuts -->
             <div class="path-shortcuts" style="display: flex; gap: 0.5rem; margin-bottom: 0.75rem; flex-wrap: wrap;">
-              <button type="button" class="btn-secondary btn-sm" onclick="enterDirectory('drives')">💻 All Drives</button>
-              <button type="button" class="btn-secondary btn-sm" onclick="enterDirectory('C:\\')">📁 C:\</button>
-              <button type="button" class="btn-secondary btn-sm" onclick="enterDirectory('C:\\Users')">👥 C:\Users</button>
-              <button type="button" class="btn-secondary btn-sm" onclick="enterDirectory('C:\\Windows')">⚙️ C:\Windows</button>
+              <button type="button" class="btn-secondary btn-sm btn-quick-nav" data-path="drives">💻 All Drives</button>
+              <button type="button" class="btn-secondary btn-sm btn-quick-nav" data-path="C:\">📁 C:\</button>
+              <button type="button" class="btn-secondary btn-sm btn-quick-nav" data-path="C:\Users">👥 C:\Users</button>
+              <button type="button" class="btn-secondary btn-sm btn-quick-nav" data-path="C:\Windows">⚙️ C:\Windows</button>
             </div>
 
             <!-- Path Navigation Bar -->
@@ -501,16 +501,16 @@
         <button type="button" class="btn-close" id="btn-close-auth">&times;</button>
       </div>
       <p style="font-size: 0.85rem; color: var(--text-muted); margin-bottom: 1.25rem;">
-        Single-admin access is active. Click <strong>"Sign In as Admin"</strong> below:
+        Enter your administrator credentials to securely authenticate and access managed computers:
       </p>
       <form id="auth-form" class="auth-form">
         <div class="form-group">
-          <label for="auth-email">Master Admin ID</label>
-          <input type="email" id="auth-email" value="admin@laptopctl.com" required autocomplete="username">
+          <label for="auth-email">Administrator Email</label>
+          <input type="email" id="auth-email" placeholder="admin@laptopctl.com" required autocomplete="username">
         </div>
         <div class="form-group">
           <label for="auth-password">Password</label>
-          <input type="password" id="auth-password" value="AdminPassword123!" required autocomplete="current-password">
+          <input type="password" id="auth-password" placeholder="Enter password" required autocomplete="current-password">
         </div>
         <div id="auth-msg" class="auth-msg" style="display: none;"></div>
         <button type="submit" class="btn-primary w-full" id="btn-auth-submit">Sign In as Admin</button>

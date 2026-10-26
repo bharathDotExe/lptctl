@@ -13,14 +13,18 @@ const API_BASE = savedBackend || (
     : window.location.origin
 );
 
+// Clear any legacy persistent tokens from localStorage to prevent auto-login
+localStorage.removeItem('laptopctl_token');
+localStorage.removeItem('laptopctl_user_email');
+
 const state = {
   activeTab: 'devices',
   devices: [],
   selectedDeviceId: null,
-  jwtToken: localStorage.getItem('laptopctl_token'),
-  currentUser: { email: localStorage.getItem('laptopctl_user_email') || '' },
+  jwtToken: sessionStorage.getItem('laptopctl_token'),
+  currentUser: { email: sessionStorage.getItem('laptopctl_user_email') || '' },
   mockMode: false,
-  authMode: 'register'
+  authMode: 'login'
 };
 
 // Initial Mock Data (used if backend is offline or for preview)
@@ -100,47 +104,26 @@ const MOCK_AUDIT = [
 ];
 
 // Initialize application
-document.addEventListener('DOMContentLoaded', async () => {
+document.addEventListener('DOMContentLoaded', () => {
   setupNavigation();
   setupEventListeners();
   initAuthUI();
-  if (!state.jwtToken) {
-    await autoAdminLogin();
-  } else {
+
+  if (state.jwtToken) {
     loadDevices();
     loadAuditLog();
+  } else {
+    renderDevicesTable([]);
+    updateMetrics();
   }
 
-  // Auto-refresh devices and metrics every 5 seconds so dashboard is always live
+  // Auto-refresh devices and metrics every 5 seconds if authenticated
   setInterval(() => {
     if (state.jwtToken) {
       loadDevices();
     }
   }, 5000);
 });
-
-async function autoAdminLogin() {
-  try {
-    const res = await fetch(`${API_BASE}/api/auth/login`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ email: 'admin@laptopctl.com', password: 'AdminPassword123!' })
-    });
-    if (res.ok) {
-      const data = await res.json();
-      const token = data.accessToken || data.token;
-      if (token) {
-        localStorage.setItem('laptopctl_token', token);
-        localStorage.setItem('laptopctl_user_email', data.email || 'admin@laptopctl.com');
-        state.jwtToken = token;
-        state.currentUser = { email: data.email || 'admin@laptopctl.com' };
-        initAuthUI();
-      }
-    }
-  } catch {}
-  loadDevices();
-  loadAuditLog();
-}
 
 // Tab Navigation
 function setupNavigation() {
@@ -197,9 +180,12 @@ function setupEventListeners() {
   const btnLogout = document.getElementById('btn-logout');
   if (btnLogout) {
     btnLogout.addEventListener('click', () => {
+      sessionStorage.removeItem('laptopctl_token');
+      sessionStorage.removeItem('laptopctl_user_email');
       localStorage.removeItem('laptopctl_token');
       localStorage.removeItem('laptopctl_user_email');
       state.jwtToken = null;
+      state.currentUser = { email: '' };
       initAuthUI();
       loadDevices();
       loadAuditLog();
@@ -232,8 +218,8 @@ function setupEventListeners() {
         const token = loginData.accessToken || loginData.token;
         if (!token) throw new Error('No access token received from server.');
 
-        localStorage.setItem('laptopctl_token', token);
-        localStorage.setItem('laptopctl_user_email', loginData.email || email);
+        sessionStorage.setItem('laptopctl_token', token);
+        sessionStorage.setItem('laptopctl_user_email', loginData.email || email);
         state.jwtToken = token;
         state.currentUser = { email: loginData.email || email };
 
@@ -301,6 +287,13 @@ function setupEventListeners() {
   });
   document.getElementById('btn-path-up').addEventListener('click', navigateUp);
 
+  document.querySelectorAll('.btn-quick-nav').forEach(btn => {
+    btn.addEventListener('click', () => {
+      const path = btn.getAttribute('data-path') || 'drives';
+      enterDirectory(path);
+    });
+  });
+
   // Search input filter
   document.getElementById('device-search-input').addEventListener('input', (e) => {
     const query = e.target.value.toLowerCase();
@@ -350,7 +343,7 @@ function initAuthUI() {
   if (state.jwtToken) {
     if (userProfile) userProfile.style.display = 'flex';
     if (btnOpenAuth) btnOpenAuth.style.display = 'none';
-    const email = localStorage.getItem('laptopctl_user_email') || 'Admin';
+    const email = sessionStorage.getItem('laptopctl_user_email') || 'Admin';
     if (userEmail) userEmail.textContent = email;
     if (userAvatar) userAvatar.textContent = email.substring(0, 2).toUpperCase();
   } else {
@@ -575,14 +568,25 @@ async function handleTerminalCommand(e) {
   input.value = '';
   appendTerminalLine(`PS> ${cmd}`, 'text-primary');
 
-  if (!state.selectedDeviceId) {
-    appendTerminalLine('Error: No target computer selected. Select one from the dropdown above.', 'text-red');
+  if (!state.jwtToken) {
+    appendTerminalLine('Error: Not authenticated. Please sign in as Administrator first.', 'text-red');
+    openAuthModal('Please sign in to execute remote terminal commands.');
     return;
+  }
+
+  if (!state.selectedDeviceId) {
+    if (state.devices.length > 0) {
+      state.selectedDeviceId = (state.devices.find(d => d.isOnline) || state.devices[0]).deviceId;
+      populateDeviceDropdowns();
+    } else {
+      appendTerminalLine('Error: No target computer connected. Please enroll a device or ensure an agent is running.', 'text-red');
+      return;
+    }
   }
 
   // Handle local terminal helper commands
   if (cmd.toLowerCase() === 'help') {
-    appendTerminalLine('Supported commands:\n  ipconfig, Get-Service, Get-Process, systeminfo, tasklist, restart-service <name>\n  All valid PowerShell expressions are evaluated under SYSTEM context.', 'text-secondary');
+    appendTerminalLine('Supported commands:\n  ipconfig, Get-Service, Get-Process, systeminfo, tasklist\n  open <url> or open <path> (e.g. open https://youtube.com or open C:\\)\n  All valid PowerShell expressions are evaluated under target SYSTEM context.', 'text-secondary');
     return;
   }
 
@@ -594,37 +598,41 @@ async function handleTerminalCommand(e) {
   appendTerminalLine(`Executing '${cmd}' on remote target [${state.selectedDeviceId}]...`, 'text-muted');
 
   try {
-    // Attempt live execution via backend relay
     const res = await fetch(`${API_BASE}/api/devices/${state.selectedDeviceId}/exec`, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
         'Authorization': `Bearer ${state.jwtToken}`
       },
-      body: JSON.stringify({ command: cmd, timeoutSeconds: 30 })
+      body: JSON.stringify({ command: cmd, timeoutSeconds: 45 })
     });
 
     if (res.ok) {
       const result = await res.json();
       if (result.stdout) appendTerminalLine(result.stdout, 'text-green');
       if (result.stderr) appendTerminalLine(result.stderr, 'text-red');
+      if (!result.stdout && !result.stderr) appendTerminalLine('(Command completed with no output)', 'text-muted');
       appendTerminalLine(`[Process completed with exit code ${result.exitCode}]`, 'text-muted');
       return;
-    }
-  } catch {
-    // Fallback response for simulator/demo mode
-  }
-
-  // Simulated realistic PowerShell output
-  setTimeout(() => {
-    if (cmd.toLowerCase().includes('ipconfig')) {
-      appendTerminalLine(`Windows IP Configuration\n\nEthernet adapter Ethernet 1:\n   Connection-specific DNS Suffix  . : corp.internal\n   IPv4 Address. . . . . . . . . . . : 192.168.1.145\n   Subnet Mask . . . . . . . . . . . : 255.255.255.0\n   Default Gateway . . . . . . . . . : 192.168.1.1`, 'text-green');
-    } else if (cmd.toLowerCase().includes('service')) {
-      appendTerminalLine(`Status   Name               DisplayName\n------   ----               -----------\nRunning  LaptopCtlAgent     LaptopCtl Remote Administration Agent\nRunning  LanmanWorkstation  Workstation\nRunning  wuauserv           Windows Update`, 'text-green');
     } else {
-      appendTerminalLine(`[Target: ${state.selectedDeviceId}] Command '${cmd}' executed successfully.\nExitCode: 0\nResult: Operation completed.`, 'text-green');
+      let errMsg = `HTTP ${res.status}`;
+      try {
+        const err = await res.json();
+        errMsg = err.message || errMsg;
+      } catch {}
+
+      if (res.status === 401) {
+        appendTerminalLine(`Error: Authentication expired (${errMsg}). Please sign in again.`, 'text-red');
+        state.jwtToken = null;
+        initAuthUI();
+        openAuthModal('Session expired. Please sign in again.');
+      } else {
+        appendTerminalLine(`Remote Execution Error (${res.status}): ${errMsg}`, 'text-red');
+      }
     }
-  }, 400);
+  } catch (err) {
+    appendTerminalLine(`Network Error: ${err.message}`, 'text-red');
+  }
 }
 
 function appendTerminalLine(text, className = '') {
@@ -636,10 +644,28 @@ function appendTerminalLine(text, className = '') {
   screen.scrollTop = screen.scrollHeight;
 }
 
+// Path Normalizer for Windows Paths
+function normalizePath(rawPath) {
+  if (!rawPath) return 'drives';
+  let p = rawPath.trim();
+  if (p === '/' || p === '\\' || p.toLowerCase() === 'drives') return 'drives';
+  // Fix drive-relative path missing backslash (e.g. "C:Users" -> "C:\Users", "C:$Recycle.Bin" -> "C:\$Recycle.Bin")
+  if (p.length >= 2 && p[1] === ':') {
+    if (p.length === 2) {
+      p += '\\';
+    } else if (p[2] !== '\\' && p[2] !== '/') {
+      p = p[0] + ':\\' + p.substring(2);
+    }
+  }
+  return p;
+}
+
 // Live File Explorer
 async function loadFiles() {
   const deviceId = state.selectedDeviceId;
-  const currentPath = document.getElementById('files-current-path').value.trim();
+  const pathInput = document.getElementById('files-current-path');
+  const currentPath = normalizePath(pathInput.value);
+  pathInput.value = currentPath;
   const tbody = document.getElementById('files-tbody');
   tbody.innerHTML = `<tr><td colspan="5" style="text-align:center; padding: 2.5rem; color: var(--text-muted);"><span class="loading-spinner"></span> Querying directory from remote device...</td></tr>`;
 
@@ -649,7 +675,9 @@ async function loadFiles() {
   }
 
   if (!state.jwtToken) {
-    await autoAdminLogin();
+    tbody.innerHTML = `<tr><td colspan="5" style="text-align:center; padding: 2rem; color: var(--accent-amber);">Please sign in as Administrator to access files and drives.</td></tr>`;
+    openAuthModal('Please sign in as Administrator to access remote files.');
+    return;
   }
 
   try {
@@ -661,7 +689,13 @@ async function loadFiles() {
     if (res.ok) {
       const files = await res.json();
       tbody.innerHTML = '';
-      if (!files || files.length === 0) {
+      if (!Array.isArray(files)) {
+        const errMsg = files && files.message ? files.message : 'Invalid response from remote computer';
+        tbody.innerHTML = `<tr><td colspan="5" style="text-align:center; padding: 2rem; color: var(--accent-red);">Failed to list directory: ${escapeHtml(errMsg)}</td></tr>`;
+        return;
+      }
+
+      if (files.length === 0) {
         tbody.innerHTML = `<tr><td colspan="5" style="text-align:center; padding: 2rem; color: var(--text-muted);">Folder is empty.</td></tr>`;
         return;
       }
@@ -682,13 +716,28 @@ async function loadFiles() {
           <td>${f.isDirectory ? 'Directory' : 'File'}</td>
           <td>${sizeText}</td>
           <td>${modifiedText}</td>
-          <td class="text-right">
-            ${f.isDirectory
-              ? `<button class="btn-secondary btn-sm" onclick="enterDirectory('${escapeHtml(f.fullPath)}')">Open</button>`
-              : `<button class="btn-primary btn-sm" onclick="downloadFile('${escapeHtml(f.fullPath)}', '${escapeHtml(f.name)}')">Download</button>`
-            }
-          </td>
+          <td class="text-right"></td>
         `;
+
+        const actionTd = tr.querySelector('.text-right');
+        if (f.isDirectory) {
+          const openBtn = document.createElement('button');
+          openBtn.className = 'btn-secondary btn-sm';
+          openBtn.textContent = 'Open';
+          openBtn.addEventListener('click', () => {
+            enterDirectory(f.fullPath);
+          });
+          actionTd.appendChild(openBtn);
+        } else {
+          const dlBtn = document.createElement('button');
+          dlBtn.className = 'btn-primary btn-sm';
+          dlBtn.textContent = 'Download';
+          dlBtn.addEventListener('click', () => {
+            downloadFile(f.fullPath, f.name);
+          });
+          actionTd.appendChild(dlBtn);
+        }
+
         tbody.appendChild(tr);
       });
       return;
@@ -698,6 +747,11 @@ async function loadFiles() {
         const err = await res.json();
         errMsg = err.message || errMsg;
       } catch {}
+      if (res.status === 401) {
+        state.jwtToken = null;
+        initAuthUI();
+        openAuthModal('Session expired. Please sign in again.');
+      }
       tbody.innerHTML = `<tr><td colspan="5" style="text-align:center; padding: 2rem; color: var(--accent-red);">Failed to list directory: ${escapeHtml(errMsg)}</td></tr>`;
     }
   } catch (err) {
@@ -706,15 +760,17 @@ async function loadFiles() {
 }
 
 window.enterDirectory = function(path) {
-  document.getElementById('files-current-path').value = path;
+  const norm = normalizePath(path);
+  document.getElementById('files-current-path').value = norm;
   loadFiles();
 };
 
 window.navigateUp = function() {
   const input = document.getElementById('files-current-path');
-  let current = input.value.trim().replace(/[/\\]+$/, '');
+  let current = normalizePath(input.value);
   if (!current || current.toLowerCase() === 'drives') return;
 
+  current = current.replace(/[/\\]+$/, '');
   const lastSlash = Math.max(current.lastIndexOf('\\'), current.lastIndexOf('/'));
   if (lastSlash > 2) {
     input.value = current.substring(0, lastSlash);
@@ -729,6 +785,11 @@ window.navigateUp = function() {
 window.downloadFile = async function(filePath, fileName) {
   const deviceId = state.selectedDeviceId;
   if (!deviceId) return;
+
+  if (!state.jwtToken) {
+    openAuthModal('Please sign in as Administrator to download files.');
+    return;
+  }
 
   try {
     const res = await fetch(`${API_BASE}/api/devices/${deviceId}/files/download?path=${encodeURIComponent(filePath)}`, {
@@ -751,7 +812,13 @@ window.downloadFile = async function(filePath, fileName) {
         const err = await res.json();
         msg = err.message || msg;
       } catch {}
-      alert(`Download failed: ${msg}`);
+      if (res.status === 401) {
+        state.jwtToken = null;
+        initAuthUI();
+        openAuthModal('Session expired. Please sign in again.');
+      } else {
+        alert(`Download failed: ${msg}`);
+      }
     }
   } catch (err) {
     alert(`Download error: ${err.message}`);
@@ -761,15 +828,9 @@ window.downloadFile = async function(filePath, fileName) {
 // Enrollment Code Generation
 async function generateEnrollmentCode() {
   if (!state.jwtToken) {
-    await autoAdminLogin();
-  }
-
-  if (!state.jwtToken) {
     openAuthModal('Please sign in as Administrator to generate an enrollment code.');
     return;
   }
-
-  let code = 'LPT-' + Math.random().toString(36).substring(2, 6).toUpperCase();
 
   try {
     let res = await fetch(`${API_BASE}/api/enrollment/code`, {
@@ -778,17 +839,21 @@ async function generateEnrollmentCode() {
     });
 
     if (res.status === 401) {
-      // Token may be stale; re-authenticate and retry
-      await autoAdminLogin();
-      res = await fetch(`${API_BASE}/api/enrollment/code`, {
-        method: 'POST',
-        headers: { 'Authorization': `Bearer ${state.jwtToken}` }
-      });
+      state.jwtToken = null;
+      initAuthUI();
+      openAuthModal('Session expired. Please sign in again.');
+      return;
     }
 
     if (res.ok) {
       const data = await res.json();
-      code = data.code;
+      const code = data.code;
+      document.getElementById('enroll-code-text').textContent = code;
+      document.getElementById('code-result-box').style.display = 'block';
+
+      const scriptUrl = `${API_BASE}/install.ps1`;
+      const oneLiner = `irm ${scriptUrl} | iex; Install-LaptopCtl -EnrollmentCode "${code}" -Backend "${API_BASE}"`;
+      document.getElementById('enroll-command-preview').textContent = oneLiner;
     } else {
       let errMsg = `Server returned status ${res.status}`;
       try {
@@ -796,19 +861,10 @@ async function generateEnrollmentCode() {
         errMsg = err.message || errMsg;
       } catch {}
       alert(`Error generating code: ${errMsg}`);
-      return;
     }
   } catch (err) {
     alert('Failed to connect to backend: ' + err.message);
-    return;
   }
-
-  document.getElementById('enroll-code-text').textContent = code;
-  document.getElementById('code-result-box').style.display = 'block';
-
-  const scriptUrl = `${API_BASE}/install.ps1`;
-  const oneLiner = `irm ${scriptUrl} | iex; Install-LaptopCtl -EnrollmentCode "${code}" -Backend "${API_BASE}"`;
-  document.getElementById('enroll-command-preview').textContent = oneLiner;
 }
 
 function copyEnrollmentCommand() {

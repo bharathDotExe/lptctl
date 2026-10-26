@@ -131,6 +131,10 @@ public sealed class DevicesController : ControllerBase
         try
         {
             var response = await tcs.Task.WaitAsync(linkedCts.Token);
+            if (response.Type == WsMessageTypes.DiagnosticError)
+            {
+                return BadRequest(response.Payload);
+            }
             return Ok(response.Payload);
         }
         catch (OperationCanceledException)
@@ -177,6 +181,10 @@ public sealed class DevicesController : ControllerBase
         try
         {
             var response = await tcs.Task.WaitAsync(linkedCts.Token);
+            if (response.Type == WsMessageTypes.DiagnosticError)
+            {
+                return BadRequest(response.Payload);
+            }
             return Ok(response.Payload);
         }
         catch (OperationCanceledException)
@@ -219,6 +227,10 @@ public sealed class DevicesController : ControllerBase
         try
         {
             var response = await tcs.Task.WaitAsync(linkedCts.Token);
+            if (response.Type == WsMessageTypes.DiagnosticError)
+            {
+                return BadRequest(response.Payload);
+            }
             if (response.Payload is System.Text.Json.JsonElement elem)
             {
                 var download = System.Text.Json.JsonSerializer.Deserialize<FileDownloadResponse>(

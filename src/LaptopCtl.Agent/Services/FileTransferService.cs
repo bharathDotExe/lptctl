@@ -32,15 +32,27 @@ public sealed class FileTransferService
             {
                 foreach (var drive in System.IO.DriveInfo.GetDrives())
                 {
-                    if (!drive.IsReady) continue;
-                    driveEntries.Add(new FileEntry
+                    try
                     {
-                        Name = $"{drive.Name} ({drive.VolumeLabel})",
-                        FullPath = drive.RootDirectory.FullName,
-                        IsDirectory = true,
-                        SizeBytes = drive.TotalSize,
-                        LastModified = DateTimeOffset.UtcNow
-                    });
+                        if (!drive.IsReady) continue;
+                        string label = "";
+                        long size = 0;
+                        try { label = drive.VolumeLabel; } catch { }
+                        try { size = drive.TotalSize; } catch { }
+
+                        driveEntries.Add(new FileEntry
+                        {
+                            Name = string.IsNullOrWhiteSpace(label) ? drive.Name : $"{drive.Name} ({label})",
+                            FullPath = drive.RootDirectory.FullName,
+                            IsDirectory = true,
+                            SizeBytes = size,
+                            LastModified = DateTimeOffset.UtcNow
+                        });
+                    }
+                    catch (Exception ex)
+                    {
+                        _log.LogWarning(ex, "Failed to read drive details for {Drive}", drive.Name);
+                    }
                 }
             }
             catch (Exception ex)
@@ -193,14 +205,27 @@ public sealed class FileTransferService
     private static string ValidateAndResolvePath(string remotePath)
     {
         if (string.IsNullOrWhiteSpace(remotePath))
-            throw new ArgumentException("Path cannot be empty");
+            throw new ArgumentException("Path cannot be empty", nameof(remotePath));
 
-        // Resolve to full path, collapsing any ../ traversal
-        var fullPath = Path.GetFullPath(remotePath);
+        string normalized = remotePath.Trim();
+        // Fix drive-relative path missing backslash (e.g. "C:Users" -> "C:\Users" or "C:$Recycle.Bin" -> "C:\$Recycle.Bin")
+        if (normalized.Length >= 2 && char.IsLetter(normalized[0]) && normalized[1] == ':')
+        {
+            if (normalized.Length == 2)
+                normalized += "\\";
+            else if (normalized[2] != '\\' && normalized[2] != '/')
+                normalized = normalized[0] + ":\\" + normalized.Substring(2);
+        }
 
         // Disallow dangerous raw device namespaces
-        if (fullPath.StartsWith(@"\\.\") || fullPath.StartsWith(@"\\?\"))
+        if (normalized.StartsWith(@"\\.\", StringComparison.OrdinalIgnoreCase) ||
+            normalized.StartsWith(@"\\?\", StringComparison.OrdinalIgnoreCase))
+        {
             throw new UnauthorizedAccessException("Raw device paths are not permitted.");
+        }
+
+        // Resolve to full path, collapsing any ../ traversal
+        var fullPath = Path.GetFullPath(normalized);
 
         return fullPath;
     }
