@@ -87,7 +87,7 @@ public sealed class SessionService
         return await _db.Sessions
             .Include(s => s.Device)
             .Where(s => s.Device.OwnerId == userId && s.IsActive)
-            .OrderByDescending(s => s.StartedAt)
+            .OrderByDescending(s => s.Id)
             .Select(s => new SessionInfo
             {
                 SessionId        = s.SessionId,

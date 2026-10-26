@@ -26,14 +26,18 @@ public sealed class DeviceService
 
         var query = _db.Devices
             .Where(d => d.OwnerId == userId)
-            .OrderByDescending(d => d.LastSeen);
+            .OrderByDescending(d => d.Id);
 
         var total = await query.CountAsync(ct);
-        var items = await query
+        var rawEntities = await query
             .Skip((page - 1) * pageSize)
             .Take(pageSize)
-            .Select(d => ToModel(d))
             .ToListAsync(ct);
+
+        var items = rawEntities
+            .OrderByDescending(d => d.LastSeen ?? d.EnrolledAt)
+            .Select(d => ToModel(d))
+            .ToList();
 
         return new PagedResponse<DeviceInfo>
         {

@@ -54,7 +54,7 @@ public sealed class AuditService
 
         return await _db.AuditEvents
             .Where(e => e.OwnerId == userId)
-            .OrderByDescending(e => e.OccurredAt)
+            .OrderByDescending(e => e.Id)
             .Skip((page - 1) * pageSize)
             .Take(pageSize)
             .Select(e => new LaptopCtl.Shared.Models.AuditEvent

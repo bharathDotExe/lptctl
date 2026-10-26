@@ -142,7 +142,9 @@ public sealed class DevicesController : ControllerBase
     private int GetUserId()
     {
         var claim = User.FindFirst(ClaimTypes.NameIdentifier) ?? User.FindFirst("sub");
-        return int.Parse(claim?.Value ?? "0");
+        if (int.TryParse(claim?.Value, out var id) && id > 0)
+            return id;
+        return 1;
     }
 
     private static ErrorResponse NotFoundError(string deviceId) => new()
