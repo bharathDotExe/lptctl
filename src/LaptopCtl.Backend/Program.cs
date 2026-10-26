@@ -285,6 +285,32 @@ app.MapGet("/install.ps1", async (HttpContext ctx) =>
     }
 });
 
+// ─── Direct agent binary download endpoint ───────────────────────────────────
+app.MapGet("/api/agent/download", async (HttpContext ctx) =>
+{
+    var candidates = new[]
+    {
+        Path.Combine(app.Environment.ContentRootPath, "installer", "LaptopCtlAgent.exe"),
+        Path.Combine(app.Environment.ContentRootPath, "..", "..", "installer", "LaptopCtlAgent.exe"),
+        Path.Combine(AppContext.BaseDirectory, "installer", "LaptopCtlAgent.exe"),
+        Path.Combine(app.Environment.ContentRootPath, "LaptopCtlAgent.exe"),
+        Path.Combine(AppContext.BaseDirectory, "LaptopCtlAgent.exe")
+    };
+
+    var agentBinary = candidates.FirstOrDefault(File.Exists);
+    if (agentBinary is not null)
+    {
+        ctx.Response.ContentType = "application/vnd.microsoft.portable-executable";
+        ctx.Response.Headers.Append("Content-Disposition", "attachment; filename=\"LaptopCtlAgent.exe\"");
+        await ctx.Response.SendFileAsync(agentBinary);
+    }
+    else
+    {
+        ctx.Response.StatusCode = 404;
+        await ctx.Response.WriteAsync("LaptopCtlAgent binary not found on server.");
+    }
+});
+
 // ─── Dashboard static files ───────────────────────────────────────────────────
 var dashboardCandidates = new[]
 {

@@ -80,11 +80,33 @@ function Install-LaptopCtl {
     $acl.AddAccessRule($systemRule)
     Set-Acl -Path $DataDir -AclObject $acl
 
+    # Ensure System.Security is loaded for DPAPI ProtectedData in Windows PowerShell 5.1
+    Add-Type -AssemblyName System.Security -ErrorAction SilentlyContinue
+
     Write-Host "[2/6] Generating cryptographic device identity (RSA-2048)..." -ForegroundColor Yellow
-    $rsa = [System.Security.Cryptography.RSA]::Create(2048)
-    $pubKeyBytes = $rsa.ExportSubjectPublicKeyInfo()
-    $pubKeyBase64 = [Convert]::ToBase64String($pubKeyBytes)
-    $privKeyBytes = $rsa.ExportPkcs8PrivateKey()
+    $pubKeyBase64 = ""
+    $privKeyBytes = $null
+
+    try {
+        $rsa = [System.Security.Cryptography.RSA]::Create(2048)
+        # Check if ExportSubjectPublicKeyInfo is available (.NET Core 3.0+ / PowerShell 7+)
+        if ($rsa.PSObject.Methods['ExportSubjectPublicKeyInfo']) {
+            $pubBytes = $rsa.ExportSubjectPublicKeyInfo()
+            $pubKeyBase64 = [Convert]::ToBase64String($pubBytes)
+            $privKeyBytes = $rsa.ExportPkcs8PrivateKey()
+        }
+    }
+    catch {
+        $rsa = $null
+    }
+
+    # Universal fallback for default Windows PowerShell 5.1 / .NET Framework 4.8
+    if (-not $pubKeyBase64) {
+        $csp = New-Object System.Security.Cryptography.RSACryptoServiceProvider(2048)
+        $pubBytes = $csp.ExportCspBlob($false)
+        $pubKeyBase64 = [Convert]::ToBase64String($pubBytes)
+        $privKeyBytes = $csp.ExportCspBlob($true)
+    }
 
     # Protect private key using Windows DPAPI (Machine scope)
     $protectedPrivKey = [System.Security.Cryptography.ProtectedData]::Protect(
@@ -96,15 +118,15 @@ function Install-LaptopCtl {
     [System.IO.File]::WriteAllBytes($privKeyPath, $protectedPrivKey)
 
     Write-Host "[3/6] Enrolling device with LaptopCtl backend ($Backend)..." -ForegroundColor Yellow
-    $os = Get-CimInstance -ClassName Win32_OperatingSystem
-    $computerSystem = Get-CimInstance -ClassName Win32_ComputerSystem
+    $os = Get-CimInstance -ClassName Win32_OperatingSystem -ErrorAction SilentlyContinue
+    $osCaption = if ($os) { "$($os.Caption) (Build $($os.BuildNumber))" } else { [System.Environment]::OSVersion.ToString() }
 
     $enrollPayload = @{
         EnrollmentCode = $EnrollmentCode
         DeviceName     = $env:COMPUTERNAME
         AgentVersion   = "1.0.0"
-        OsVersion      = "$($os.Caption) (Build $($os.BuildNumber))"
-        OsArchitecture = [System.Runtime.InteropServices.RuntimeInformation]::OSArchitecture.ToString()
+        OsVersion      = $osCaption
+        OsArchitecture = [System.Environment]::GetEnvironmentVariable("PROCESSOR_ARCHITECTURE")
         PublicKeyBase64 = $pubKeyBase64
     } | ConvertTo-Json
 
@@ -130,16 +152,20 @@ function Install-LaptopCtl {
     $deviceId    = $enrollResp.deviceId
     $deviceToken = $enrollResp.deviceToken
 
-    # Write identity configuration
+    # Write identity configuration (both to ProgramData and InstallDir for guaranteed agent discovery)
     $identityData = @{
-        DeviceId    = $deviceId
-        DeviceToken = $deviceToken
-        BackendUrl  = $Backend
-        EnrolledAt  = [DateTimeOffset]::UtcNow.ToString("o")
-        IsEnrolled  = $true
+        DeviceId        = $deviceId
+        DeviceToken     = $deviceToken
+        PublicKeyBase64 = $pubKeyBase64
+        BackendUrl      = $Backend
+        EnrolledAt      = [DateTimeOffset]::UtcNow.ToString("o")
+        CreatedAt       = [DateTimeOffset]::UtcNow.ToString("o")
+        IsEnrolled      = $true
     } | ConvertTo-Json -Depth 5
 
     [System.IO.File]::WriteAllText($IdentityFile, $identityData)
+    $appDirIdentity = Join-Path $InstallDir "identity.json"
+    [System.IO.File]::WriteAllText($appDirIdentity, $identityData)
     Write-Host "      ✓ Device enrolled with ID: $deviceId" -ForegroundColor Green
 
     Write-Host "[4/6] Installing agent binary..." -ForegroundColor Yellow
@@ -147,27 +173,36 @@ function Install-LaptopCtl {
         Copy-Item -Path $AgentBinaryPath -Destination $AgentExe -Force
     }
     else {
-        # Check if binary is in source output or download from backend
-        $localBuildPath = Join-Path $PSScriptRoot "..\src\LaptopCtl.Agent\bin\Debug\net8.0-windows\win-x64\publish\LaptopCtlAgent.exe"
-        if (Test-Path $localBuildPath) {
-            Copy-Item -Path $localBuildPath -Destination $AgentExe -Force
+        # Check local paths first (if running from a cloned repo)
+        $foundLocal = $false
+        if (![string]::IsNullOrEmpty($PSScriptRoot)) {
+            $localCandidates = @(
+                (Join-Path $PSScriptRoot "LaptopCtlAgent.exe"),
+                (Join-Path $PSScriptRoot "..\src\LaptopCtl.Agent\bin\Release\net8.0-windows\win-x64\LaptopCtlAgent.exe"),
+                (Join-Path $PSScriptRoot "..\src\LaptopCtl.Agent\bin\Debug\net8.0-windows\win-x64\LaptopCtlAgent.exe")
+            )
+            foreach ($candidate in $localCandidates) {
+                if (Test-Path $candidate) {
+                    Copy-Item -Path $candidate -Destination $AgentExe -Force
+                    $foundLocal = $true
+                    break
+                }
+            }
         }
-        elseif (Test-Path (Join-Path $PSScriptRoot "..\src\LaptopCtl.Agent\bin\Debug\net8.0-windows\win-x64\LaptopCtlAgent.exe")) {
-            Copy-Item -Path (Join-Path $PSScriptRoot "..\src\LaptopCtl.Agent\bin\Debug\net8.0-windows\win-x64\LaptopCtlAgent.exe") -Destination $AgentExe -Force
-        }
-        else {
+
+        if (-not $foundLocal) {
             Write-Host "      Downloading latest agent binary from $Backend/api/agent/download..." -ForegroundColor Cyan
             try {
-                Invoke-WebRequest -Uri "$Backend/api/agent/download" -OutFile $AgentExe -TimeoutSec 120
+                [System.Net.ServicePointManager]::SecurityProtocol = [System.Net.SecurityProtocolType]::Tls12 -bor [System.Net.SecurityProtocolType]::Tls13
+                Invoke-WebRequest -Uri "$Backend/api/agent/download" -OutFile $AgentExe -UseBasicParsing -TimeoutSec 180
             }
             catch {
-                Write-Warning "Could not download binary directly from $Backend. Place LaptopCtlAgent.exe in $InstallDir manually."
+                Write-Warning "Could not download binary directly from $Backend ($($_.Exception.Message))."
             }
         }
     }
 
-    # Write agent appsettings if not present
-    $agentSettingsPath = Join-Path $InstallDir "appsettings.json"
+    # Write agent appsettings to both InstallDir and DataDir
     $agentSettings = @{
         BackendUrl = $Backend
         Logging = @{
@@ -177,7 +212,8 @@ function Install-LaptopCtl {
             }
         }
     } | ConvertTo-Json -Depth 5
-    [System.IO.File]::WriteAllText($agentSettingsPath, $agentSettings)
+    [System.IO.File]::WriteAllText((Join-Path $InstallDir "appsettings.json"), $agentSettings)
+    [System.IO.File]::WriteAllText((Join-Path $DataDir "appsettings.json"), $agentSettings)
 
     Write-Host "[5/6] Registering Windows Service ($ServiceName)..." -ForegroundColor Yellow
     $existing = Get-Service -Name $ServiceName -ErrorAction SilentlyContinue
@@ -213,7 +249,7 @@ function Install-LaptopCtl {
         }
     }
     else {
-        Write-Host "[6/6] Note: Agent binary will start once LaptopCtlAgent.exe is present in $InstallDir." -ForegroundColor Yellow
+        Write-Host "[6/6] Note: Agent binary will start once LaptopCtlAgent.exe is present in $($InstallDir)." -ForegroundColor Yellow
     }
 }
 

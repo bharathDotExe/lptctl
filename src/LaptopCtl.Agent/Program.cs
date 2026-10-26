@@ -43,6 +43,9 @@ try
 
     // Configuration
     builder.Configuration
+        .SetBasePath(AppContext.BaseDirectory)
+        .AddJsonFile("appsettings.json", optional: true, reloadOnChange: false)
+        .AddJsonFile(Path.Combine(AgentPaths.ProgramDataDirectory, "appsettings.json"), optional: true, reloadOnChange: false)
         .AddJsonFile(AgentPaths.ConfigFile, optional: true, reloadOnChange: false)
         .AddEnvironmentVariables("LAPTOPCTL_");
 

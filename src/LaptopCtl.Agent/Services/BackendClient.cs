@@ -32,9 +32,34 @@ public sealed class BackendClient : IDisposable
         _log    = log;
     }
 
-    private string BackendUrl =>
-        _config["BackendUrl"] ?? throw new InvalidOperationException(
-            "BackendUrl is not configured. Set LAPTOPCTL_BackendUrl environment variable.");
+    private string BackendUrl
+    {
+        get
+        {
+            var url = _config["BackendUrl"]
+                   ?? _config["LAPTOPCTL_BackendUrl"]
+                   ?? _config["LaptopCtl:BackendUrl"];
+            if (!string.IsNullOrWhiteSpace(url)) return url.TrimEnd('/');
+
+            // Fallback: read from identity.json
+            try
+            {
+                if (File.Exists(AgentPaths.IdentityFile))
+                {
+                    var json = File.ReadAllText(AgentPaths.IdentityFile);
+                    using var doc = JsonDocument.Parse(json);
+                    if (doc.RootElement.TryGetProperty("BackendUrl", out var prop) && !string.IsNullOrWhiteSpace(prop.GetString()))
+                    {
+                        return prop.GetString()!.TrimEnd('/');
+                    }
+                }
+            }
+            catch { }
+
+            throw new InvalidOperationException(
+                "BackendUrl is not configured. Set LAPTOPCTL_BackendUrl or specify in appsettings.json/identity.json.");
+        }
+    }
 
     // ─── Enrollment ───────────────────────────────────────────────────────────
 
