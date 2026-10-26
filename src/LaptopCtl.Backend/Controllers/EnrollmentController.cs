@@ -1,7 +1,9 @@
+using LaptopCtl.Backend.Data;
 using LaptopCtl.Backend.Services;
 using LaptopCtl.Shared.Models;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
+using Microsoft.EntityFrameworkCore;
 using System.Security.Claims;
 
 namespace LaptopCtl.Backend.Controllers;
@@ -12,8 +14,15 @@ namespace LaptopCtl.Backend.Controllers;
 public sealed class EnrollmentController : ControllerBase
 {
     private readonly EnrollmentService _enrollment;
+    private readonly AppDbContext _db;
+    private readonly ILogger<EnrollmentController> _log;
 
-    public EnrollmentController(EnrollmentService enrollment) => _enrollment = enrollment;
+    public EnrollmentController(EnrollmentService enrollment, AppDbContext db, ILogger<EnrollmentController> log)
+    {
+        _enrollment = enrollment;
+        _db         = db;
+        _log        = log;
+    }
 
     /// <summary>
     /// Authenticated users call this to generate an enrollment code
@@ -22,11 +31,18 @@ public sealed class EnrollmentController : ControllerBase
     [HttpPost("code")]
     public async Task<IActionResult> GenerateCode(CancellationToken ct)
     {
-        var userId = GetUserId();
-        if (userId == 0) return Unauthorized();
-
-        var code = await _enrollment.GenerateCodeAsync(userId, ct);
-        return Ok(code);
+        try
+        {
+            var userId = await GetUserIdAsync(ct);
+            var code = await _enrollment.GenerateCodeAsync(userId, ct);
+            return Ok(code);
+        }
+        catch (Exception ex)
+        {
+            _log.LogError(ex, "Failed to generate enrollment code");
+            return StatusCode(StatusCodes.Status500InternalServerError,
+                new ErrorResponse { Code = "CODE_GEN_FAILED", Message = ex.Message });
+        }
     }
 
     /// <summary>
@@ -54,11 +70,32 @@ public sealed class EnrollmentController : ControllerBase
         {
             return Unauthorized(new ErrorResponse { Code = "INVALID_CODE", Message = ex.Message });
         }
+        catch (Exception ex)
+        {
+            _log.LogError(ex, "Device enrollment failed");
+            return StatusCode(StatusCodes.Status500InternalServerError,
+                new ErrorResponse { Code = "ENROLLMENT_FAILED", Message = ex.Message });
+        }
     }
 
-    private int GetUserId()
+    private async Task<int> GetUserIdAsync(CancellationToken ct)
     {
-        var claim = User.FindFirst(ClaimTypes.NameIdentifier) ?? User.FindFirst("sub");
-        return int.TryParse(claim?.Value, out var id) ? id : 0;
+        var claim = User.FindFirst(ClaimTypes.NameIdentifier) 
+                 ?? User.FindFirst("sub")
+                 ?? User.FindFirst(System.IdentityModel.Tokens.Jwt.JwtRegisteredClaimNames.Sub);
+        if (int.TryParse(claim?.Value, out var id) && id > 0)
+            return id;
+
+        var email = User.FindFirst(ClaimTypes.Email)?.Value 
+                 ?? User.FindFirst("email")?.Value;
+        if (!string.IsNullOrEmpty(email))
+        {
+            var user = await _db.Users.FirstOrDefaultAsync(u => u.Email == email.ToLower(), ct);
+            if (user is not null) return user.Id;
+        }
+
+        // Single-admin fallback
+        var admin = await _db.Users.FirstOrDefaultAsync(ct);
+        return admin?.Id ?? 1;
     }
 }

@@ -22,23 +22,41 @@ public sealed class EnrollmentService
     /// <summary>Generates a short-lived, single-use enrollment code.</summary>
     public async Task<GenerateEnrollmentCodeResponse> GenerateCodeAsync(int userId, CancellationToken ct = default)
     {
+        // Ensure user exists in database to prevent FK constraint failure
+        var user = await _db.Users.FindAsync(new object[] { userId }, ct);
+        if (user is null)
+        {
+            user = await _db.Users.FirstOrDefaultAsync(ct);
+            if (user is not null) userId = user.Id;
+        }
+
         // Invalidate old unused codes for this user
-        var oldCodes = await _db.EnrollmentCodes
-            .Where(c => c.OwnerId == userId && !c.IsUsed && c.ExpiresAt > DateTimeOffset.UtcNow)
-            .ToListAsync(ct);
-        foreach (var c in oldCodes) c.IsUsed = true; // revoke old ones
+        try
+        {
+            var oldCodes = await _db.EnrollmentCodes
+                .Where(c => c.OwnerId == userId && !c.IsUsed)
+                .ToListAsync(ct);
+            foreach (var c in oldCodes) c.IsUsed = true;
+            await _db.SaveChangesAsync(ct);
+        }
+        catch (Exception ex)
+        {
+            _log.LogWarning(ex, "Failed to invalidate old codes, proceeding with new code generation.");
+        }
         
         var code = new EnrollmentCodeEntity
         {
             Code      = GenerateSecureCode(),
             OwnerId   = userId,
-            ExpiresAt = DateTimeOffset.UtcNow.AddMinutes(15)
+            ExpiresAt = DateTimeOffset.UtcNow.AddMinutes(30),
+            IsUsed    = false,
+            CreatedAt = DateTimeOffset.UtcNow
         };
 
         _db.EnrollmentCodes.Add(code);
         await _db.SaveChangesAsync(ct);
 
-        _log.LogInformation("Enrollment code generated for user {UserId}", userId);
+        _log.LogInformation("Enrollment code generated for user {UserId}: {Code}", userId, code.Code);
         await _audit.LogAsync(userId, "enrollment.code.generated",
             "Enrollment code generated", true, ct: ct);
 

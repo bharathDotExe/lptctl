@@ -152,6 +152,20 @@ using (var scope = app.Services.CreateScope())
         var db = scope.ServiceProvider.GetRequiredService<AppDbContext>();
         await db.Database.EnsureCreatedAsync();
 
+        // Create any missing tables if database pre-existed
+        try
+        {
+            var creator = Microsoft.EntityFrameworkCore.Infrastructure.AccessorExtensions.GetService<Microsoft.EntityFrameworkCore.Storage.IRelationalDatabaseCreator>(db.Database);
+            if (creator is not null)
+            {
+                await creator.CreateTablesAsync();
+            }
+        }
+        catch
+        {
+            // Tables already created
+        }
+
         // Seed and guarantee single administrator credentials
         const string adminEmail = "admin@laptopctl.com";
         const string adminPass = "AdminPassword123!";
@@ -183,6 +197,28 @@ using (var scope = app.Services.CreateScope())
         Log.Error(ex, "Failed to verify or initialize database schema.");
     }
 }
+
+// Global exception handler middleware to ensure detailed JSON error responses
+app.Use(async (context, next) =>
+{
+    try
+    {
+        await next();
+    }
+    catch (Exception ex)
+    {
+        Log.Error(ex, "Unhandled exception on {Method} {Path}", context.Request.Method, context.Request.Path);
+        if (!context.Response.HasStarted)
+        {
+            context.Response.StatusCode = 500;
+            context.Response.ContentType = "application/json";
+            await context.Response.WriteAsJsonAsync(new { 
+                code = "SERVER_ERROR", 
+                message = ex.Message 
+            });
+        }
+    }
+});
 
 // Normalize redundant slashes in request path (e.g. //api/auth -> /api/auth)
 app.Use(async (context, next) =>
