@@ -32,6 +32,14 @@ public sealed class AgentConnectionManager
 
     public bool IsAgentOnline(string deviceId) => _connections.ContainsKey(deviceId);
 
+    public async Task DisconnectAgentAsync(string deviceId)
+    {
+        if (_connections.TryRemove(deviceId, out var conn))
+        {
+            await conn.CloseAsync();
+        }
+    }
+
     public async Task<bool> SendToAgentAsync(string deviceId, WsMessage message, CancellationToken ct)
     {
         if (!_connections.TryGetValue(deviceId, out var conn)) return false;
@@ -120,6 +128,19 @@ public sealed class AgentConnection
         var json  = JsonSerializer.Serialize(message, JsonOpts);
         var bytes = Encoding.UTF8.GetBytes(json);
         await _ws.SendAsync(bytes, WebSocketMessageType.Text, true, ct);
+    }
+
+    public async Task CloseAsync()
+    {
+        try
+        {
+            if (_ws.State == WebSocketState.Open || _ws.State == WebSocketState.CloseReceived)
+            {
+                using var cts = new CancellationTokenSource(TimeSpan.FromSeconds(2));
+                await _ws.CloseAsync(WebSocketCloseStatus.NormalClosure, "Agent disconnected / uninstalled", cts.Token);
+            }
+        }
+        catch { }
     }
 
     public async Task RunReceiveLoopAsync(CancellationToken ct)

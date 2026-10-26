@@ -30,10 +30,35 @@ $ServiceName = "LaptopCtlAgent"
 $InstallDir  = Join-Path $env:ProgramFiles "LaptopCtl"
 $DataDir     = Join-Path $env:ProgramData "LaptopCtl"
 
+# 0. Attempt to notify backend so device vanishes from dashboard immediately
+$IdentityFile = Join-Path $DataDir "identity.json"
+if (-not (Test-Path $IdentityFile)) {
+    $IdentityFile = Join-Path $InstallDir "identity.json"
+}
+
+if (Test-Path $IdentityFile) {
+    try {
+        Write-Host "[1/4] Notifying LaptopCtl backend to unenroll device..." -ForegroundColor Yellow
+        $identity = Get-Content $IdentityFile -Raw | ConvertFrom-Json
+        if ($identity.DeviceId -and $identity.BackendUrl -and $identity.DeviceToken) {
+            $unenrollUrl = "$($identity.BackendUrl.TrimEnd('/'))/api/devices/$($identity.DeviceId)/unenroll"
+            [System.Net.ServicePointManager]::SecurityProtocol = [System.Net.SecurityProtocolType]::Tls12 -bor [System.Net.SecurityProtocolType]::Tls13
+            Invoke-RestMethod -Uri $unenrollUrl -Method Post -Headers @{ Authorization = "Device $($identity.DeviceToken)" } -TimeoutSec 5 -ErrorAction SilentlyContinue | Out-Null
+            Write-Host "      ✓ Device successfully un-enrolled and removed from dashboard" -ForegroundColor Green
+        }
+    }
+    catch {
+        Write-Host "      (Backend unreachable or already removed; proceeding with local cleanup)" -ForegroundColor Gray
+    }
+}
+else {
+    Write-Host "[1/4] No local identity.json found; skipping backend notification." -ForegroundColor Gray
+}
+
 # 1. Stop and remove service
 $svc = Get-Service -Name $ServiceName -ErrorAction SilentlyContinue
 if ($svc) {
-    Write-Host "[1/3] Stopping service '$ServiceName'..." -ForegroundColor Yellow
+    Write-Host "[2/4] Stopping service '$ServiceName'..." -ForegroundColor Yellow
     if ($svc.Status -eq "Running") {
         Stop-Service -Name $ServiceName -Force -ErrorAction SilentlyContinue
         Start-Sleep -Seconds 2
@@ -41,21 +66,22 @@ if ($svc) {
     # Ensure any running process is terminated so files are unlocked
     Get-Process -Name $ServiceName -ErrorAction SilentlyContinue | Stop-Process -Force -ErrorAction SilentlyContinue
     Start-Sleep -Seconds 1
-    Write-Host "[2/3] Removing service registration..." -ForegroundColor Yellow
+    Write-Host "      Removing service registration..." -ForegroundColor Yellow
     & sc.exe delete $ServiceName | Out-Null
 }
 else {
     Get-Process -Name $ServiceName -ErrorAction SilentlyContinue | Stop-Process -Force -ErrorAction SilentlyContinue
-    Write-Host "[1/3] Service '$ServiceName' was not found or already removed." -ForegroundColor Gray
+    Write-Host "[2/4] Service '$ServiceName' was not found or already removed." -ForegroundColor Gray
 }
 
-# Clean any temporary interactive tasks
+# 2. Clean any temporary interactive tasks
+Write-Host "[3/4] Cleaning scheduled tasks..." -ForegroundColor Yellow
 try {
     Get-ScheduledTask -TaskName "LaptopCtl_Interactive_*" -ErrorAction SilentlyContinue | Unregister-ScheduledTask -Confirm:$false -ErrorAction SilentlyContinue
 } catch {}
 
-# 2. Clean directories
-Write-Host "[3/3] Cleaning installation files..." -ForegroundColor Yellow
+# 3. Clean directories
+Write-Host "[4/4] Cleaning installation files..." -ForegroundColor Yellow
 if (Test-Path $InstallDir) {
     try {
         Remove-Item -Path $InstallDir -Recurse -Force

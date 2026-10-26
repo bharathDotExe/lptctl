@@ -64,4 +64,75 @@ public class DeviceServiceTests
         Assert.Equal(2, result.TotalCount);
         Assert.All(result.Items, item => Assert.True(item.DeviceId is "dev-1" or "dev-2"));
     }
+
+    [Fact]
+    public async Task ListDevicesAsync_ExcludesRevokedDevices()
+    {
+        using var db = CreateTestDb();
+        var audit = new AuditService(db, NullLogger<AuditService>.Instance);
+        var service = new DeviceService(db, NullLogger<DeviceService>.Instance, audit);
+
+        db.Devices.AddRange(
+            new DeviceEntity { DeviceId = "active-pc", DeviceName = "Active PC", OwnerId = 1, EnrollmentStatus = "Active", DeviceTokenHash = "h1" },
+            new DeviceEntity { DeviceId = "uninstalled-pc", DeviceName = "Uninstalled PC", OwnerId = 1, EnrollmentStatus = "Revoked", DeviceTokenHash = "h2" }
+        );
+        await db.SaveChangesAsync();
+
+        var result = await service.ListDevicesAsync(userId: 1, page: 1, pageSize: 10);
+
+        Assert.Equal(1, result.TotalCount);
+        Assert.Single(result.Items);
+        Assert.Equal("active-pc", result.Items[0].DeviceId);
+    }
+
+    [Fact]
+    public async Task ValidateDeviceTokenAsync_RejectsRevokedDevice()
+    {
+        using var db = CreateTestDb();
+        var audit = new AuditService(db, NullLogger<AuditService>.Instance);
+        var service = new DeviceService(db, NullLogger<DeviceService>.Instance, audit);
+
+        var tokenHash = BCrypt.Net.BCrypt.HashPassword("secret-token", workFactor: 10);
+        db.Devices.Add(new DeviceEntity
+        {
+            DeviceId = "revoked-device",
+            DeviceName = "Dead PC",
+            OwnerId = 1,
+            EnrollmentStatus = "Revoked",
+            DeviceTokenHash = tokenHash
+        });
+        await db.SaveChangesAsync();
+
+        var (valid, ownerId) = await service.ValidateDeviceTokenAsync("revoked-device", "secret-token");
+
+        Assert.False(valid);
+        Assert.Equal(0, ownerId);
+    }
+
+    [Fact]
+    public async Task UnenrollDeviceAsync_MarksDeviceAsRevokedAndOffline()
+    {
+        using var db = CreateTestDb();
+        var audit = new AuditService(db, NullLogger<AuditService>.Instance);
+        var service = new DeviceService(db, NullLogger<DeviceService>.Instance, audit);
+
+        var tokenHash = BCrypt.Net.BCrypt.HashPassword("device-token-123", workFactor: 10);
+        db.Devices.Add(new DeviceEntity
+        {
+            DeviceId = "pc-to-unenroll",
+            DeviceName = "Laptop To Wipe",
+            OwnerId = 1,
+            EnrollmentStatus = "Active",
+            IsOnline = true,
+            DeviceTokenHash = tokenHash
+        });
+        await db.SaveChangesAsync();
+
+        var success = await service.UnenrollDeviceAsync("pc-to-unenroll", "device-token-123", "192.168.1.50");
+
+        Assert.True(success);
+        var device = await db.Devices.FirstAsync(d => d.DeviceId == "pc-to-unenroll");
+        Assert.Equal("Revoked", device.EnrollmentStatus);
+        Assert.False(device.IsOnline);
+    }
 }

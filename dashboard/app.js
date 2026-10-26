@@ -425,7 +425,7 @@ function renderDevicesTable(devices) {
       <td class="text-right">
         <button class="btn-secondary btn-sm" onclick="inspectDevice('${dev.deviceId}')">Inspect</button>
         <button class="btn-secondary btn-sm" onclick="openTerminalForDevice('${dev.deviceId}')">Terminal</button>
-        <button class="btn-danger-sm" onclick="revokeDevice('${dev.deviceId}')">Revoke</button>
+        <button class="btn-danger-sm" onclick="uninstallDevice('${dev.deviceId}', '${escapeHtml(dev.deviceName)}')">Uninstall</button>
       </td>
     `;
     tbody.appendChild(tr);
@@ -472,28 +472,53 @@ window.openTerminalForDevice = function(deviceId) {
   appendTerminalLine(`Switched target computer to [${deviceId}]`, 'text-cyan');
 };
 
-window.revokeDevice = async function(deviceId) {
-  if (!confirm(`Are you sure you want to revoke enrollment for device ${deviceId}? This action cannot be undone.`)) {
-    return;
-  }
+window.uninstallDevice = async function(deviceId, deviceName) {
+  const confirmMsg = `Are you sure you want to completely uninstall "${deviceName || deviceId}"?\n\n` +
+    `• If the target computer is online, the agent service and files will be cleanly removed remotely.\n` +
+    `• This device will completely vanish from your dashboard.\n\n` +
+    `Do you want to proceed?`;
+
+  if (!confirm(confirmMsg)) return;
 
   try {
-    const res = await fetch(`${API_BASE}/api/devices/${deviceId}`, {
-      method: 'DELETE',
-      headers: { 'Authorization': `Bearer ${state.jwtToken}` }
+    const res = await fetch(`${API_BASE}/api/devices/${deviceId}/uninstall`, {
+      method: 'POST',
+      headers: {
+        'Authorization': `Bearer ${state.jwtToken}`,
+        'Content-Type': 'application/json'
+      }
     });
+
+    const data = await res.json().catch(() => ({}));
     if (res.ok) {
-      alert(`Device ${deviceId} revoked.`);
-      loadDevices();
+      alert(data.message || `Device "${deviceName || deviceId}" uninstalled successfully.`);
     } else {
-      throw new Error();
+      // Fallback: try DELETE /api/devices/:id
+      const delRes = await fetch(`${API_BASE}/api/devices/${deviceId}`, {
+        method: 'DELETE',
+        headers: { 'Authorization': `Bearer ${state.jwtToken}` }
+      });
+      if (delRes.ok) {
+        alert(`Device "${deviceName || deviceId}" removed from dashboard.`);
+      } else {
+        alert(data.message || 'Failed to uninstall device.');
+      }
     }
-  } catch {
+  } catch (err) {
+    console.error("Error uninstalling device:", err);
+  } finally {
     state.devices = state.devices.filter(d => d.deviceId !== deviceId);
+    if (state.selectedDeviceId === deviceId) {
+      state.selectedDeviceId = state.devices[0]?.deviceId || null;
+    }
     renderDevicesTable(state.devices);
     updateMetrics();
+    populateDeviceDropdowns();
+    await loadDevices();
   }
 };
+
+window.revokeDevice = window.uninstallDevice;
 
 // Diagnostics & Specs
 async function refreshDiagnostics() {

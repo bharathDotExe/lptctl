@@ -25,7 +25,7 @@ public sealed class DeviceService
         page     = Math.Max(1, page);
 
         var query = _db.Devices
-            .Where(d => d.OwnerId == userId)
+            .Where(d => d.OwnerId == userId && d.EnrollmentStatus != "Revoked")
             .OrderByDescending(d => d.Id);
 
         var total = await query.CountAsync(ct);
@@ -51,7 +51,7 @@ public sealed class DeviceService
     public async Task<DeviceInfo?> GetDeviceAsync(int userId, string deviceId, CancellationToken ct = default)
     {
         var d = await _db.Devices
-            .FirstOrDefaultAsync(x => x.DeviceId == deviceId && x.OwnerId == userId, ct);
+            .FirstOrDefaultAsync(x => x.DeviceId == deviceId && x.OwnerId == userId && x.EnrollmentStatus != "Revoked", ct);
         return d is null ? null : ToModel(d);
     }
 
@@ -99,38 +99,70 @@ public sealed class DeviceService
     public async Task<(bool Valid, int OwnerId)> ValidateDeviceTokenAsync(
         string deviceId, string rawToken, string? deviceName = null, string? osVersion = null, CancellationToken ct = default)
     {
-        var device = await _db.Devices
-            .FirstOrDefaultAsync(d =>
-                d.DeviceId == deviceId &&
-                d.EnrollmentStatus == "Active", ct);
+        var existing = await _db.Devices
+            .FirstOrDefaultAsync(d => d.DeviceId == deviceId, ct);
 
-        if (device is null)
+        if (existing is not null)
         {
-            // Auto-heal: If database was restarted or reset, auto-register connecting agent for admin
-            var admin = await _db.Users.FirstOrDefaultAsync(ct);
-            var ownerId = admin?.Id ?? 1;
-
-            var tokenHash = BCrypt.Net.BCrypt.HashPassword(rawToken, workFactor: 10);
-            device = new DeviceEntity
+            if (existing.EnrollmentStatus == "Revoked")
             {
-                DeviceId         = deviceId,
-                DeviceName       = !string.IsNullOrWhiteSpace(deviceName) ? deviceName : "Remote Computer",
-                OwnerId          = ownerId,
-                DeviceTokenHash  = tokenHash,
-                OsVersion        = osVersion ?? "Windows",
-                EnrollmentStatus = "Active",
-                IsOnline         = true,
-                LastSeen         = DateTimeOffset.UtcNow,
-                EnrolledAt       = DateTimeOffset.UtcNow
-            };
-            _db.Devices.Add(device);
-            await _db.SaveChangesAsync(ct);
-            _log.LogInformation("Auto-healed device record {DeviceId} ({Name}) for user {UserId}", deviceId, device.DeviceName, ownerId);
-            return (true, ownerId);
+                _log.LogWarning("Rejected connection from revoked device {DeviceId}", deviceId);
+                return (false, 0);
+            }
+
+            bool valid = BCrypt.Net.BCrypt.Verify(rawToken, existing.DeviceTokenHash);
+            return (valid, existing.OwnerId);
         }
 
-        bool valid = BCrypt.Net.BCrypt.Verify(rawToken, device.DeviceTokenHash);
-        return (valid, device.OwnerId);
+        // Auto-heal: If database was restarted or reset, auto-register connecting agent for admin
+        var admin = await _db.Users.FirstOrDefaultAsync(ct);
+        var ownerId = admin?.Id ?? 1;
+
+        var tokenHash = BCrypt.Net.BCrypt.HashPassword(rawToken, workFactor: 10);
+        var device = new DeviceEntity
+        {
+            DeviceId         = deviceId,
+            DeviceName       = !string.IsNullOrWhiteSpace(deviceName) ? deviceName : "Remote Computer",
+            OwnerId          = ownerId,
+            DeviceTokenHash  = tokenHash,
+            OsVersion        = osVersion ?? "Windows",
+            EnrollmentStatus = "Active",
+            IsOnline         = true,
+            LastSeen         = DateTimeOffset.UtcNow,
+            EnrolledAt       = DateTimeOffset.UtcNow
+        };
+        _db.Devices.Add(device);
+        await _db.SaveChangesAsync(ct);
+        _log.LogInformation("Auto-healed device record {DeviceId} ({Name}) for user {UserId}", deviceId, device.DeviceName, ownerId);
+        return (true, ownerId);
+    }
+
+    public async Task<bool> UnenrollDeviceAsync(
+        string deviceId, string rawToken, string? ipAddress, CancellationToken ct = default)
+    {
+        var device = await _db.Devices.FirstOrDefaultAsync(d => d.DeviceId == deviceId, ct);
+        if (device is null) return false;
+
+        if (!string.IsNullOrEmpty(device.DeviceTokenHash) && !string.IsNullOrEmpty(rawToken))
+        {
+            bool valid = BCrypt.Net.BCrypt.Verify(rawToken, device.DeviceTokenHash);
+            if (!valid)
+            {
+                _log.LogWarning("Invalid device token on unenroll for {DeviceId}", deviceId);
+                return false;
+            }
+        }
+
+        device.EnrollmentStatus = "Revoked";
+        device.IsOnline         = false;
+        await _db.SaveChangesAsync(ct);
+
+        _log.LogInformation("Device uninstalled/unenrolled: {DeviceId}", deviceId);
+        await _audit.LogAsync(device.OwnerId, "device.uninstalled",
+            $"Device '{device.DeviceName}' (ID: {deviceId}) uninstalled itself",
+            true, ipAddress, deviceId: deviceId, ct: ct);
+
+        return true;
     }
 
     private static DeviceInfo ToModel(DeviceEntity d) => new()
