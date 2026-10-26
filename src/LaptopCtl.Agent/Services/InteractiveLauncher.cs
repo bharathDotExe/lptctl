@@ -100,47 +100,102 @@ public static class InteractiveLauncher
 
         string trimmed = command.Trim();
 
-        // 1. "open <url or path>"
+        // 1. Explicit GUI / interactive prefix: "gui <command>" or "interactive <command>"
+        if (trimmed.StartsWith("gui ", StringComparison.OrdinalIgnoreCase))
+        {
+            target = trimmed.Substring(4).Trim();
+            return true;
+        }
+        if (trimmed.StartsWith("interactive ", StringComparison.OrdinalIgnoreCase))
+        {
+            target = trimmed.Substring(12).Trim();
+            return true;
+        }
+
+        // 2. Keyboard typing helper: "type <text>" or "sendkeys <text>"
+        if (trimmed.StartsWith("type ", StringComparison.OrdinalIgnoreCase))
+        {
+            string textToType = trimmed.Substring(5).Trim().Trim('"', '\'');
+            string escaped = EscapeSendKeys(textToType);
+            target = $"Add-Type -AssemblyName System.Windows.Forms; [System.Windows.Forms.SendKeys]::SendWait(\"{escaped}\")";
+            return true;
+        }
+        if (trimmed.StartsWith("sendkeys ", StringComparison.OrdinalIgnoreCase))
+        {
+            string textToType = trimmed.Substring(9).Trim().Trim('"', '\'');
+            target = $"Add-Type -AssemblyName System.Windows.Forms; [System.Windows.Forms.SendKeys]::SendWait(\"{textToType}\")";
+            return true;
+        }
+
+        // 3. Mouse click helper: "click", "click <x> <y>", "rightclick", "doubleclick"
+        if (trimmed.StartsWith("click", StringComparison.OrdinalIgnoreCase) ||
+            trimmed.StartsWith("rightclick", StringComparison.OrdinalIgnoreCase) ||
+            trimmed.StartsWith("doubleclick", StringComparison.OrdinalIgnoreCase))
+        {
+            target = BuildMouseCommand(trimmed);
+            return true;
+        }
+
+        // 4. Hotkey helper: "hotkey <key>" (e.g. "hotkey win+d", "hotkey win+l", "hotkey alt+f4")
+        if (trimmed.StartsWith("hotkey ", StringComparison.OrdinalIgnoreCase))
+        {
+            target = BuildHotkeyCommand(trimmed.Substring(7).Trim());
+            return true;
+        }
+
+        // 5. Native popup message box: "msg * <text>" or "alert <text>"
+        if (trimmed.StartsWith("msg *", StringComparison.OrdinalIgnoreCase) ||
+            trimmed.StartsWith("alert ", StringComparison.OrdinalIgnoreCase))
+        {
+            string msg = trimmed.StartsWith("alert ", StringComparison.OrdinalIgnoreCase)
+                ? trimmed.Substring(6).Trim().Trim('"', '\'')
+                : trimmed.Substring(5).Trim().Trim('"', '\'');
+            target = $"Add-Type -AssemblyName System.Windows.Forms; [System.Windows.Forms.MessageBox]::Show(\"{msg.Replace("\"", "\\\"")}\", 'LaptopCtl Administrator Notification', 'OK', 'Information')";
+            return true;
+        }
+
+        // 6. Scripts containing SendKeys, Start-Process notepad/calc/mspaint, or GUI scripts
+        if (trimmed.Contains("SendKeys", StringComparison.OrdinalIgnoreCase) ||
+            trimmed.Contains("Start-Process notepad", StringComparison.OrdinalIgnoreCase) ||
+            trimmed.Contains("Start-Process calc", StringComparison.OrdinalIgnoreCase) ||
+            trimmed.Contains("Start-Process mspaint", StringComparison.OrdinalIgnoreCase) ||
+            trimmed.Contains("[System.Windows.Forms.", StringComparison.OrdinalIgnoreCase))
+        {
+            target = trimmed;
+            return true;
+        }
+
+        // 7. Standard open/browse/start
         if (trimmed.StartsWith("open ", StringComparison.OrdinalIgnoreCase))
         {
             target = trimmed.Substring(5).Trim().Trim('"', '\'');
             return true;
         }
 
-        // 2. "browse <url>"
         if (trimmed.StartsWith("browse ", StringComparison.OrdinalIgnoreCase))
         {
             target = trimmed.Substring(7).Trim().Trim('"', '\'');
             return true;
         }
 
-        // 3. "start <url or path or app>"
         if (trimmed.StartsWith("start ", StringComparison.OrdinalIgnoreCase))
         {
-            var rest = trimmed.Substring(6).Trim();
-            // start http... or start chrome ... or start explorer ...
-            target = rest;
+            target = trimmed.Substring(6).Trim();
             return true;
         }
 
-        // 4. Direct URL: "http://..." or "https://..." or "www...." or "youtube.com"
+        // 8. Direct URL or simple GUI app launch
         if (trimmed.StartsWith("http://", StringComparison.OrdinalIgnoreCase) ||
             trimmed.StartsWith("https://", StringComparison.OrdinalIgnoreCase) ||
             trimmed.StartsWith("www.", StringComparison.OrdinalIgnoreCase) ||
             trimmed.Equals("youtube", StringComparison.OrdinalIgnoreCase) ||
-            trimmed.Equals("youtube.com", StringComparison.OrdinalIgnoreCase))
-        {
-            target = trimmed;
-            return true;
-        }
-
-        // 5. Explorer or GUI app commands
-        if (trimmed.StartsWith("explorer", StringComparison.OrdinalIgnoreCase) ||
+            trimmed.Equals("youtube.com", StringComparison.OrdinalIgnoreCase) ||
+            trimmed.StartsWith("explorer", StringComparison.OrdinalIgnoreCase) ||
             trimmed.Equals("calc", StringComparison.OrdinalIgnoreCase) ||
             trimmed.Equals("calc.exe", StringComparison.OrdinalIgnoreCase) ||
             trimmed.Equals("notepad", StringComparison.OrdinalIgnoreCase) ||
             trimmed.Equals("notepad.exe", StringComparison.OrdinalIgnoreCase) ||
-            trimmed.StartsWith("Start-Process http", StringComparison.OrdinalIgnoreCase))
+            trimmed.Equals("taskmgr", StringComparison.OrdinalIgnoreCase))
         {
             target = trimmed;
             return true;
@@ -166,14 +221,14 @@ public static class InteractiveLauncher
         // Attempt 1: Windows API CreateProcessAsUser
         if (sessionId > 0 && TryCreateProcessAsUser(sessionId, commandLine, out var procError))
         {
-            output = $"[LaptopCtl Interactive] Successfully launched '{target}' on user screen!\nTarget: {target}\nUser: {userName}\nSession: {sessionId}";
+            output = $"[LaptopCtl Interactive] Successfully executed on user screen!\nAction: {target}\nUser: {userName}\nSession: {sessionId}";
             return true;
         }
 
         // Attempt 2: Task Scheduler interactive launch (/IT /RU)
         if (!string.IsNullOrEmpty(userName) && TryTaskSchedulerInteractive(userName, commandLine, out var taskError))
         {
-            output = $"[LaptopCtl Interactive] Successfully launched '{target}' on user screen via Task Scheduler!\nTarget: {target}\nUser: {userName}\nSession: {sessionId}";
+            output = $"[LaptopCtl Interactive] Successfully executed on user screen via Task Scheduler!\nAction: {target}\nUser: {userName}\nSession: {sessionId}";
             return true;
         }
 
@@ -204,7 +259,9 @@ public static class InteractiveLauncher
             return "https://www.youtube.com";
         if (target.StartsWith("www.", StringComparison.OrdinalIgnoreCase))
             return "https://" + target;
-        if (target.StartsWith("Start-Process", StringComparison.OrdinalIgnoreCase))
+
+        // Only strip Start-Process if it's a simple single launch, not a multi-command script
+        if (target.StartsWith("Start-Process", StringComparison.OrdinalIgnoreCase) && !target.Contains(';'))
         {
             var parts = target.Split(new[] { ' ' }, 2, StringSplitOptions.RemoveEmptyEntries);
             if (parts.Length > 1) return parts[1].Trim().Trim('"', '\'');
@@ -214,6 +271,20 @@ public static class InteractiveLauncher
 
     private static string BuildUserCommandLine(string target)
     {
+        // If target contains PowerShell script constructs, execute it via powershell -EncodedCommand
+        if (target.Contains(';') ||
+            target.Contains("SendKeys", StringComparison.OrdinalIgnoreCase) ||
+            target.Contains("Start-Process", StringComparison.OrdinalIgnoreCase) ||
+            target.Contains("Add-Type", StringComparison.OrdinalIgnoreCase) ||
+            target.Contains("$", StringComparison.OrdinalIgnoreCase) ||
+            target.Contains("New-Object", StringComparison.OrdinalIgnoreCase) ||
+            target.Contains("::"))
+        {
+            string psScript = "$ProgressPreference = 'SilentlyContinue'; " + target;
+            string b64 = Convert.ToBase64String(Encoding.Unicode.GetBytes(psScript));
+            return $"powershell.exe -NoProfile -NonInteractive -ExecutionPolicy Bypass -EncodedCommand {b64}";
+        }
+
         // For URLs, folders, or document paths, 'cmd.exe /c start "" "target"' delegates to Windows Shell
         if (target.StartsWith("http://", StringComparison.OrdinalIgnoreCase) ||
             target.StartsWith("https://", StringComparison.OrdinalIgnoreCase) ||
@@ -231,6 +302,67 @@ public static class InteractiveLauncher
 
         // If it's another application or command
         return $"cmd.exe /c start \"\" {target}";
+    }
+
+    private static string BuildMouseCommand(string cmd)
+    {
+        var parts = cmd.Split(new[] { ' ' }, StringSplitOptions.RemoveEmptyEntries);
+        string type = parts[0].ToLowerInvariant();
+        int x = 0, y = 0;
+        bool hasCoords = false;
+
+        if (parts.Length >= 3 && int.TryParse(parts[1], out x) && int.TryParse(parts[2], out y))
+        {
+            hasCoords = true;
+        }
+
+        string setPos = hasCoords
+            ? $"Add-Type -AssemblyName System.Windows.Forms; [System.Windows.Forms.Cursor]::Position = New-Object System.Drawing.Point({x}, {y}); "
+            : "";
+
+        string clickCode = type switch
+        {
+            "rightclick" => @"$code = '[DllImport(""user32.dll"")] public static extern void mouse_event(int flags, int dx, int dy, int data, int extra);'; Add-Type -MemberDefinition $code -Name Win32Input -Namespace Win32; [Win32.Win32Input]::mouse_event(0x08, 0, 0, 0, 0); [Win32.Win32Input]::mouse_event(0x10, 0, 0, 0, 0)",
+            "doubleclick" => @"$code = '[DllImport(""user32.dll"")] public static extern void mouse_event(int flags, int dx, int dy, int data, int extra);'; Add-Type -MemberDefinition $code -Name Win32Input -Namespace Win32; [Win32.Win32Input]::mouse_event(0x02, 0, 0, 0, 0); [Win32.Win32Input]::mouse_event(0x04, 0, 0, 0, 0); Start-Sleep -Milliseconds 100; [Win32.Win32Input]::mouse_event(0x02, 0, 0, 0, 0); [Win32.Win32Input]::mouse_event(0x04, 0, 0, 0, 0)",
+            _ => @"$code = '[DllImport(""user32.dll"")] public static extern void mouse_event(int flags, int dx, int dy, int data, int extra);'; Add-Type -MemberDefinition $code -Name Win32Input -Namespace Win32; [Win32.Win32Input]::mouse_event(0x02, 0, 0, 0, 0); [Win32.Win32Input]::mouse_event(0x04, 0, 0, 0, 0)"
+        };
+
+        return setPos + clickCode;
+    }
+
+    private static string BuildHotkeyCommand(string key)
+    {
+        string norm = key.ToLowerInvariant().Replace(" ", "");
+        return norm switch
+        {
+            "win+l" or "lock" => "rundll32.exe user32.dll,LockWorkStation",
+            "win+d" or "desktop" => "(New-Object -ComObject Shell.Application).ToggleDesktop()",
+            "win+r" or "run" => "(New-Object -ComObject Shell.Application).FileRun()",
+            "alt+f4" => "Add-Type -AssemblyName System.Windows.Forms; [System.Windows.Forms.SendKeys]::SendWait('%{F4}')",
+            "alt+tab" => "Add-Type -AssemblyName System.Windows.Forms; [System.Windows.Forms.SendKeys]::SendWait('%{TAB}')",
+            "taskmgr" or "ctrl+shift+esc" => "taskmgr.exe",
+            "enter" => "Add-Type -AssemblyName System.Windows.Forms; [System.Windows.Forms.SendKeys]::SendWait('{ENTER}')",
+            "tab" => "Add-Type -AssemblyName System.Windows.Forms; [System.Windows.Forms.SendKeys]::SendWait('{TAB}')",
+            "esc" or "escape" => "Add-Type -AssemblyName System.Windows.Forms; [System.Windows.Forms.SendKeys]::SendWait('{ESC}')",
+            "backspace" => "Add-Type -AssemblyName System.Windows.Forms; [System.Windows.Forms.SendKeys]::SendWait('{BS}')",
+            "space" => "Add-Type -AssemblyName System.Windows.Forms; [System.Windows.Forms.SendKeys]::SendWait(' ')",
+            _ => $"Add-Type -AssemblyName System.Windows.Forms; [System.Windows.Forms.SendKeys]::SendWait('{key}')"
+        };
+    }
+
+    private static string EscapeSendKeys(string text)
+    {
+        return text
+            .Replace("{", "{{}")
+            .Replace("}", "{}}")
+            .Replace("+", "{+}")
+            .Replace("^", "{^}")
+            .Replace("%", "{%}")
+            .Replace("~", "{~}")
+            .Replace("(", "{(}")
+            .Replace(")", "{)}")
+            .Replace("[", "{[}")
+            .Replace("]", "{]}");
     }
 
     private static int GetActiveSessionId()
