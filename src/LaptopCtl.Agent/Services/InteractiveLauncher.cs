@@ -214,20 +214,16 @@ public static class InteractiveLauncher
 
     private static string BuildUserCommandLine(string target)
     {
-        // If it's a URL
+        // For URLs, folders, or document paths, 'cmd.exe /c start "" "target"' delegates to Windows Shell
         if (target.StartsWith("http://", StringComparison.OrdinalIgnoreCase) ||
-            target.StartsWith("https://", StringComparison.OrdinalIgnoreCase))
+            target.StartsWith("https://", StringComparison.OrdinalIgnoreCase) ||
+            (target.Length >= 2 && target[1] == ':') ||
+            target.StartsWith(@"\\"))
         {
             return $"cmd.exe /c start \"\" \"{target}\"";
         }
 
-        // If it's a directory or drive path
-        if (Directory.Exists(target) || (target.Length >= 2 && target[1] == ':'))
-        {
-            return $"explorer.exe \"{target}\"";
-        }
-
-        // If it's an explorer command
+        // If it's an explicit explorer command
         if (target.StartsWith("explorer", StringComparison.OrdinalIgnoreCase))
         {
             return target;
@@ -258,8 +254,14 @@ public static class InteractiveLauncher
         return 1;
     }
 
+    private static string _cachedUserName = string.Empty;
+    private static DateTime _lastUserNameCheck = DateTime.MinValue;
+
     private static string GetActiveUserName()
     {
+        if (!string.IsNullOrEmpty(_cachedUserName) && (DateTime.UtcNow - _lastUserNameCheck).TotalMinutes < 1)
+            return _cachedUserName;
+
         try
         {
             var psi = new ProcessStartInfo("powershell.exe", "-NoProfile -Command \"(Get-CimInstance Win32_ComputerSystem).UserName\"")
@@ -271,7 +273,11 @@ public static class InteractiveLauncher
             using var p = Process.Start(psi);
             var output = p?.StandardOutput.ReadToEnd()?.Trim();
             if (!string.IsNullOrWhiteSpace(output))
+            {
+                _cachedUserName = output;
+                _lastUserNameCheck = DateTime.UtcNow;
                 return output;
+            }
         }
         catch { }
 
