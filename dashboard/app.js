@@ -100,13 +100,40 @@ const MOCK_AUDIT = [
 ];
 
 // Initialize application
-document.addEventListener('DOMContentLoaded', () => {
+document.addEventListener('DOMContentLoaded', async () => {
   setupNavigation();
   setupEventListeners();
   initAuthUI();
+  if (!state.jwtToken) {
+    await autoAdminLogin();
+  } else {
+    loadDevices();
+    loadAuditLog();
+  }
+});
+
+async function autoAdminLogin() {
+  try {
+    const res = await fetch(`${API_BASE}/api/auth/login`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ email: 'admin@laptopctl.com', password: 'AdminPassword123!' })
+    });
+    if (res.ok) {
+      const data = await res.json();
+      const token = data.accessToken || data.token;
+      if (token) {
+        localStorage.setItem('laptopctl_token', token);
+        localStorage.setItem('laptopctl_user_email', data.email || 'admin@laptopctl.com');
+        state.jwtToken = token;
+        state.currentUser = { email: data.email || 'admin@laptopctl.com' };
+        initAuthUI();
+      }
+    }
+  } catch {}
   loadDevices();
   loadAuditLog();
-});
+}
 
 // Tab Navigation
 function setupNavigation() {
@@ -156,32 +183,6 @@ function setupEventListeners() {
     });
   }
 
-  const tabRegister = document.getElementById('tab-auth-register');
-  const tabLogin = document.getElementById('tab-auth-login');
-  const btnSubmit = document.getElementById('btn-auth-submit');
-  const authTitle = document.getElementById('auth-modal-title');
-  const authMsg = document.getElementById('auth-msg');
-
-  if (tabRegister && tabLogin) {
-    tabRegister.addEventListener('click', () => {
-      state.authMode = 'register';
-      tabRegister.classList.add('active');
-      tabLogin.classList.remove('active');
-      if (btnSubmit) btnSubmit.textContent = 'Create Admin Account';
-      if (authTitle) authTitle.textContent = 'Create Admin Account';
-      if (authMsg) authMsg.style.display = 'none';
-    });
-
-    tabLogin.addEventListener('click', () => {
-      state.authMode = 'login';
-      tabLogin.classList.add('active');
-      tabRegister.classList.remove('active');
-      if (btnSubmit) btnSubmit.textContent = 'Sign In';
-      if (authTitle) authTitle.textContent = 'Sign In';
-      if (authMsg) authMsg.style.display = 'none';
-    });
-  }
-
   const btnLogout = document.getElementById('btn-logout');
   if (btnLogout) {
     btnLogout.addEventListener('click', () => {
@@ -195,6 +196,9 @@ function setupEventListeners() {
   }
 
   const authForm = document.getElementById('auth-form');
+  const authMsg = document.getElementById('auth-msg');
+  const btnSubmit = document.getElementById('btn-auth-submit');
+
   if (authForm) {
     authForm.addEventListener('submit', async (e) => {
       e.preventDefault();
@@ -204,18 +208,6 @@ function setupEventListeners() {
       if (btnSubmit) btnSubmit.disabled = true;
 
       try {
-        if (state.authMode === 'register') {
-          const regRes = await fetch(`${API_BASE}/api/auth/register`, {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ email, password })
-          });
-          const regData = await regRes.json();
-          if (!regRes.ok) {
-            throw new Error(regData.message || 'Registration failed.');
-          }
-        }
-
         const loginRes = await fetch(`${API_BASE}/api/auth/login`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
@@ -223,13 +215,16 @@ function setupEventListeners() {
         });
         const loginData = await loginRes.json();
         if (!loginRes.ok) {
-          throw new Error(loginData.message || 'Login failed.');
+          throw new Error(loginData.message || 'Invalid administrator credentials.');
         }
 
-        localStorage.setItem('laptopctl_token', loginData.token);
-        localStorage.setItem('laptopctl_user_email', email);
-        state.jwtToken = loginData.token;
-        state.currentUser = { email };
+        const token = loginData.accessToken || loginData.token;
+        if (!token) throw new Error('No access token received from server.');
+
+        localStorage.setItem('laptopctl_token', token);
+        localStorage.setItem('laptopctl_user_email', loginData.email || email);
+        state.jwtToken = token;
+        state.currentUser = { email: loginData.email || email };
 
         initAuthUI();
         closeAuthModal();

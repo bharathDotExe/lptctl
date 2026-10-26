@@ -19,15 +19,10 @@ public sealed class AuthController : ControllerBase
     }
 
     [HttpPost("register")]
-    public async Task<IActionResult> Register([FromBody] RegisterRequest req, CancellationToken ct)
+    public IActionResult Register([FromBody] RegisterRequest req)
     {
-        if (!ModelState.IsValid) return BadRequest(ModelState);
-
-        var (success, error) = await _auth.RegisterAsync(req.Email, req.Password, ct);
-        if (!success)
-            return Conflict(new ErrorResponse { Code = "REGISTRATION_FAILED", Message = error! });
-
-        return Ok(new { Message = "Registration successful." });
+        return StatusCode(StatusCodes.Status403Forbidden,
+            new ErrorResponse { Code = "REGISTRATION_DISABLED", Message = "Registration is closed. Only one administrator account is permitted. Use your master admin credentials to sign in." });
     }
 
     [HttpPost("login")]

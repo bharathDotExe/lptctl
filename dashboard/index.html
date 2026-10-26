@@ -485,28 +485,27 @@
         </section>
       </main>
     </div>
-  <!-- Auth Modal (Sign In / Register) -->
+  <!-- Auth Modal (Single Administrator Sign In) -->
   <div class="modal-overlay" id="auth-modal" style="display: none;">
     <div class="modal-card">
       <div class="modal-header">
-        <h2 id="auth-modal-title">Admin Access</h2>
+        <h2 id="auth-modal-title">Administrator Sign In</h2>
         <button type="button" class="btn-close" id="btn-close-auth">&times;</button>
       </div>
-      <div class="auth-tabs">
-        <button type="button" class="auth-tab active" id="tab-auth-register">Create Account</button>
-        <button type="button" class="auth-tab" id="tab-auth-login">Sign In</button>
-      </div>
+      <p style="font-size: 0.85rem; color: var(--text-muted); margin-bottom: 1.25rem;">
+        Single-admin access is active. Click <strong>"Sign In as Admin"</strong> below:
+      </p>
       <form id="auth-form" class="auth-form">
         <div class="form-group">
-          <label for="auth-email">Admin Email</label>
-          <input type="email" id="auth-email" placeholder="admin@example.com" required autocomplete="username">
+          <label for="auth-email">Master Admin ID</label>
+          <input type="email" id="auth-email" value="admin@laptopctl.com" required autocomplete="username">
         </div>
         <div class="form-group">
           <label for="auth-password">Password</label>
-          <input type="password" id="auth-password" placeholder="At least 8 characters..." required autocomplete="current-password">
+          <input type="password" id="auth-password" value="AdminPassword123!" required autocomplete="current-password">
         </div>
         <div id="auth-msg" class="auth-msg" style="display: none;"></div>
-        <button type="submit" class="btn-primary w-full" id="btn-auth-submit">Create Admin Account</button>
+        <button type="submit" class="btn-primary w-full" id="btn-auth-submit">Sign In as Admin</button>
       </form>
     </div>
   </div>

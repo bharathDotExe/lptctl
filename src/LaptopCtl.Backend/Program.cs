@@ -139,14 +139,39 @@ builder.Services.AddHealthChecks();
 // ─── Build app ────────────────────────────────────────────────────────────────
 var app = builder.Build();
 
-// Auto-ensure database schema exists on startup
+// Auto-ensure database schema exists on startup & seed single administrator
 using (var scope = app.Services.CreateScope())
 {
     try
     {
         var db = scope.ServiceProvider.GetRequiredService<AppDbContext>();
         await db.Database.EnsureCreatedAsync();
-        Log.Information("Database schema verified and ready.");
+
+        // Seed and guarantee single administrator credentials
+        const string adminEmail = "admin@laptopctl.com";
+        const string adminPass = "AdminPassword123!";
+        var adminUser = await db.Users.FirstOrDefaultAsync(u => u.Email == adminEmail);
+        if (adminUser is null)
+        {
+            adminUser = new UserEntity
+            {
+                Email = adminEmail,
+                PasswordHash = BCrypt.Net.BCrypt.HashPassword(adminPass, workFactor: 12),
+                IsActive = true
+            };
+            db.Users.Add(adminUser);
+            await db.SaveChangesAsync();
+            Log.Information("Single administrator seeded: {Email}", adminEmail);
+        }
+        else
+        {
+            adminUser.PasswordHash = BCrypt.Net.BCrypt.HashPassword(adminPass, workFactor: 12);
+            adminUser.IsActive = true;
+            await db.SaveChangesAsync();
+            Log.Information("Single administrator credentials synchronized: {Email}", adminEmail);
+        }
+
+        Log.Information("Database schema verified and single administrator ready.");
     }
     catch (Exception ex)
     {
