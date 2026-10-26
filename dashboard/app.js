@@ -17,9 +17,10 @@ const state = {
   activeTab: 'devices',
   devices: [],
   selectedDeviceId: null,
-  jwtToken: localStorage.getItem('laptopctl_token') || 'mock-admin-token',
-  currentUser: { email: 'admin@laptopctl.corp' },
-  mockMode: false
+  jwtToken: localStorage.getItem('laptopctl_token'),
+  currentUser: { email: localStorage.getItem('laptopctl_user_email') || '' },
+  mockMode: false,
+  authMode: 'register'
 };
 
 // Initial Mock Data (used if backend is offline or for preview)
@@ -102,6 +103,7 @@ const MOCK_AUDIT = [
 document.addEventListener('DOMContentLoaded', () => {
   setupNavigation();
   setupEventListeners();
+  initAuthUI();
   loadDevices();
   loadAuditLog();
 });
@@ -139,6 +141,111 @@ function setupEventListeners() {
   document.getElementById('btn-fetch-diagnostics').addEventListener('click', refreshDiagnostics);
   document.getElementById('btn-generate-code').addEventListener('click', generateEnrollmentCode);
   document.getElementById('btn-copy-command').addEventListener('click', copyEnrollmentCommand);
+
+  // Auth event listeners
+  const btnOpenAuth = document.getElementById('btn-open-auth');
+  if (btnOpenAuth) btnOpenAuth.addEventListener('click', () => openAuthModal());
+
+  const btnCloseAuth = document.getElementById('btn-close-auth');
+  if (btnCloseAuth) btnCloseAuth.addEventListener('click', closeAuthModal);
+
+  const authModal = document.getElementById('auth-modal');
+  if (authModal) {
+    authModal.addEventListener('click', (e) => {
+      if (e.target === authModal) closeAuthModal();
+    });
+  }
+
+  const tabRegister = document.getElementById('tab-auth-register');
+  const tabLogin = document.getElementById('tab-auth-login');
+  const btnSubmit = document.getElementById('btn-auth-submit');
+  const authTitle = document.getElementById('auth-modal-title');
+  const authMsg = document.getElementById('auth-msg');
+
+  if (tabRegister && tabLogin) {
+    tabRegister.addEventListener('click', () => {
+      state.authMode = 'register';
+      tabRegister.classList.add('active');
+      tabLogin.classList.remove('active');
+      if (btnSubmit) btnSubmit.textContent = 'Create Admin Account';
+      if (authTitle) authTitle.textContent = 'Create Admin Account';
+      if (authMsg) authMsg.style.display = 'none';
+    });
+
+    tabLogin.addEventListener('click', () => {
+      state.authMode = 'login';
+      tabLogin.classList.add('active');
+      tabRegister.classList.remove('active');
+      if (btnSubmit) btnSubmit.textContent = 'Sign In';
+      if (authTitle) authTitle.textContent = 'Sign In';
+      if (authMsg) authMsg.style.display = 'none';
+    });
+  }
+
+  const btnLogout = document.getElementById('btn-logout');
+  if (btnLogout) {
+    btnLogout.addEventListener('click', () => {
+      localStorage.removeItem('laptopctl_token');
+      localStorage.removeItem('laptopctl_user_email');
+      state.jwtToken = null;
+      initAuthUI();
+      loadDevices();
+      loadAuditLog();
+    });
+  }
+
+  const authForm = document.getElementById('auth-form');
+  if (authForm) {
+    authForm.addEventListener('submit', async (e) => {
+      e.preventDefault();
+      const email = document.getElementById('auth-email').value.trim();
+      const password = document.getElementById('auth-password').value;
+      if (authMsg) authMsg.style.display = 'none';
+      if (btnSubmit) btnSubmit.disabled = true;
+
+      try {
+        if (state.authMode === 'register') {
+          const regRes = await fetch(`${API_BASE}/api/auth/register`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ email, password })
+          });
+          const regData = await regRes.json();
+          if (!regRes.ok) {
+            throw new Error(regData.message || 'Registration failed.');
+          }
+        }
+
+        const loginRes = await fetch(`${API_BASE}/api/auth/login`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ email, password })
+        });
+        const loginData = await loginRes.json();
+        if (!loginRes.ok) {
+          throw new Error(loginData.message || 'Login failed.');
+        }
+
+        localStorage.setItem('laptopctl_token', loginData.token);
+        localStorage.setItem('laptopctl_user_email', email);
+        state.jwtToken = loginData.token;
+        state.currentUser = { email };
+
+        initAuthUI();
+        closeAuthModal();
+        loadDevices();
+        loadAuditLog();
+      } catch (err) {
+        if (authMsg) {
+          authMsg.className = 'auth-msg error';
+          authMsg.textContent = err.message || 'Authentication error';
+          authMsg.style.display = 'block';
+        }
+      } finally {
+        if (btnSubmit) btnSubmit.disabled = false;
+      }
+    });
+  }
 
   const indicator = document.getElementById('backend-indicator');
   if (indicator) {
@@ -201,8 +308,15 @@ function setupEventListeners() {
   });
 }
 
-// Fetch Enrolled Devices
 async function loadDevices() {
+  if (!state.jwtToken) {
+    state.devices = [];
+    renderDevicesTable(state.devices);
+    updateMetrics();
+    updateBackendIndicator(true);
+    return;
+  }
+
   try {
     const res = await fetch(`${API_BASE}/api/devices`, {
       headers: { 'Authorization': `Bearer ${state.jwtToken}` }
@@ -213,14 +327,52 @@ async function loadDevices() {
     state.mockMode = false;
     updateBackendIndicator(true);
   } catch (err) {
-    state.devices = MOCK_DEVICES;
-    state.mockMode = true;
-    updateBackendIndicator(false);
+    state.devices = [];
+    state.mockMode = false;
+    updateBackendIndicator(true);
   }
 
   renderDevicesTable(state.devices);
   updateMetrics();
   populateDeviceDropdowns();
+}
+
+function initAuthUI() {
+  const userProfile = document.getElementById('user-profile');
+  const btnOpenAuth = document.getElementById('btn-open-auth');
+  const userEmail = document.getElementById('header-user-email');
+  const userAvatar = document.getElementById('header-avatar');
+
+  if (state.jwtToken) {
+    if (userProfile) userProfile.style.display = 'flex';
+    if (btnOpenAuth) btnOpenAuth.style.display = 'none';
+    const email = localStorage.getItem('laptopctl_user_email') || 'Admin';
+    if (userEmail) userEmail.textContent = email;
+    if (userAvatar) userAvatar.textContent = email.substring(0, 2).toUpperCase();
+  } else {
+    if (userProfile) userProfile.style.display = 'none';
+    if (btnOpenAuth) btnOpenAuth.style.display = 'inline-flex';
+  }
+}
+
+function openAuthModal(msg = null) {
+  const modal = document.getElementById('auth-modal');
+  const msgEl = document.getElementById('auth-msg');
+  if (msgEl) {
+    if (msg) {
+      msgEl.className = 'auth-msg error';
+      msgEl.textContent = msg;
+      msgEl.style.display = 'block';
+    } else {
+      msgEl.style.display = 'none';
+    }
+  }
+  if (modal) modal.style.display = 'flex';
+}
+
+function closeAuthModal() {
+  const modal = document.getElementById('auth-modal');
+  if (modal) modal.style.display = 'none';
 }
 
 function updateBackendIndicator(isOnline) {
@@ -515,6 +667,11 @@ window.downloadFile = function(fileName) {
 
 // Enrollment Code Generation
 async function generateEnrollmentCode() {
+  if (!state.jwtToken) {
+    openAuthModal('Please sign in or create an admin account to generate an enrollment code.');
+    return;
+  }
+
   let code = 'LPT-' + Math.random().toString(36).substring(2, 6).toUpperCase();
 
   try {
@@ -525,9 +682,14 @@ async function generateEnrollmentCode() {
     if (res.ok) {
       const data = await res.json();
       code = data.code;
+    } else {
+      const err = await res.json();
+      alert(err.message || 'Failed to generate code.');
+      return;
     }
-  } catch {
-    // Keep generated code in mock mode
+  } catch (err) {
+    alert('Failed to connect to backend.');
+    return;
   }
 
   document.getElementById('enroll-code-text').textContent = code;

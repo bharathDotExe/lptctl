@@ -33,11 +33,12 @@
           <span class="status-dot"></span>
           <span id="backend-status-text">Backend: Connected</span>
         </div>
-        <div class="user-profile" id="user-profile">
-          <span class="user-avatar">AD</span>
-          <span class="user-email" id="header-user-email">admin@laptopctl.corp</span>
+        <div class="user-profile" id="user-profile" style="display: none;">
+          <span class="user-avatar" id="header-avatar">AD</span>
+          <span class="user-email" id="header-user-email">admin@example.com</span>
           <button class="btn-ghost btn-sm" id="btn-logout" title="Log Out">Log Out</button>
         </div>
+        <button class="btn-primary btn-sm" id="btn-open-auth">Sign In / Register</button>
       </div>
     </header>
 
@@ -483,6 +484,30 @@
           </div>
         </section>
       </main>
+    </div>
+  <!-- Auth Modal (Sign In / Register) -->
+  <div class="modal-overlay" id="auth-modal" style="display: none;">
+    <div class="modal-card">
+      <div class="modal-header">
+        <h2 id="auth-modal-title">Admin Access</h2>
+        <button type="button" class="btn-close" id="btn-close-auth">&times;</button>
+      </div>
+      <div class="auth-tabs">
+        <button type="button" class="auth-tab active" id="tab-auth-register">Create Account</button>
+        <button type="button" class="auth-tab" id="tab-auth-login">Sign In</button>
+      </div>
+      <form id="auth-form" class="auth-form">
+        <div class="form-group">
+          <label for="auth-email">Admin Email</label>
+          <input type="email" id="auth-email" placeholder="admin@example.com" required autocomplete="username">
+        </div>
+        <div class="form-group">
+          <label for="auth-password">Password</label>
+          <input type="password" id="auth-password" placeholder="At least 8 characters..." required autocomplete="current-password">
+        </div>
+        <div id="auth-msg" class="auth-msg" style="display: none;"></div>
+        <button type="submit" class="btn-primary w-full" id="btn-auth-submit">Create Admin Account</button>
+      </form>
     </div>
   </div>
 

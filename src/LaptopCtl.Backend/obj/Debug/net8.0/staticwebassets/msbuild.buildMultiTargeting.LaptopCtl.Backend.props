@@ -1,3 +1,0 @@
-﻿<Project>
-  <Import Project="..\build\LaptopCtl.Backend.props" />
-</Project>
