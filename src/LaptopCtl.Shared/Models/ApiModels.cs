@@ -202,6 +202,13 @@ public record FileEntry
     public DateTimeOffset? LastModified { get; init; }
 }
 
+public record FileDownloadResponse
+{
+    public string FileName { get; init; } = string.Empty;
+    public long SizeBytes { get; init; }
+    public string Base64Data { get; init; } = string.Empty;
+}
+
 // ─── Update metadata ─────────────────────────────────────────────────────────
 
 public record AgentReleaseInfo

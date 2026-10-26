@@ -317,12 +317,12 @@
               <div class="terminal-line text-cyan">LaptopCtl Interactive Remote Terminal [Version 1.0.0]</div>
               <div class="terminal-line text-grey">All commands execute under target Windows Service context (NT AUTHORITY\SYSTEM).</div>
               <div class="terminal-line text-grey">Select an enrolled target device above and type administrative commands below.</div>
-              <div class="terminal-line text-grey">Type 'help', 'ipconfig', 'Get-Service', or any PowerShell expression.</div>
+              <div class="terminal-line text-green">💡 Interactive Screen Actions: Type 'open https://youtube.com' or 'open C:\' to launch directly on the user's screen!</div>
               <br>
             </div>
             <form class="terminal-input-bar" id="terminal-form">
               <span class="terminal-prompt">PS&gt;</span>
-              <input type="text" id="terminal-input" placeholder="Enter administrative command..." autocomplete="off">
+              <input type="text" id="terminal-input" placeholder="Enter administrative command (e.g. open https://youtube.com, dir, ipconfig)..." autocomplete="off">
               <button type="submit" class="btn-primary" id="btn-terminal-send">Execute</button>
             </form>
           </div>
@@ -332,8 +332,8 @@
         <section class="tab-pane" id="pane-files">
           <div class="pane-header">
             <div>
-              <h1 class="pane-title">Authorized File Manager</h1>
-              <p class="pane-subtitle">Inspect directory contents and transfer files with cryptographic integrity checks.</p>
+              <h1 class="pane-title">Live Remote File Manager</h1>
+              <p class="pane-subtitle">Browse directories and download files directly from the target computer in real-time.</p>
             </div>
             <div class="pane-actions">
               <select class="select-dropdown" id="files-device-select">
@@ -343,6 +343,14 @@
           </div>
 
           <div class="card">
+            <!-- Quick Location Shortcuts -->
+            <div class="path-shortcuts" style="display: flex; gap: 0.5rem; margin-bottom: 0.75rem; flex-wrap: wrap;">
+              <button type="button" class="btn-secondary btn-sm" onclick="enterDirectory('drives')">💻 All Drives</button>
+              <button type="button" class="btn-secondary btn-sm" onclick="enterDirectory('C:\\')">📁 C:\</button>
+              <button type="button" class="btn-secondary btn-sm" onclick="enterDirectory('C:\\Users')">👥 C:\Users</button>
+              <button type="button" class="btn-secondary btn-sm" onclick="enterDirectory('C:\\Windows')">⚙️ C:\Windows</button>
+            </div>
+
             <!-- Path Navigation Bar -->
             <div class="path-bar">
               <button class="btn-secondary btn-sm" id="btn-path-up" title="Up one folder">

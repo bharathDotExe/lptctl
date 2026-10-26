@@ -139,6 +139,106 @@ public sealed class DevicesController : ControllerBase
         }
     }
 
+    [HttpGet("{deviceId}/files")]
+    public async Task<IActionResult> ListFiles(
+        string deviceId, [FromQuery] string? path = "", CancellationToken ct = default)
+    {
+        var userId = GetUserId();
+        var device = await _devices.GetDeviceAsync(userId, deviceId, ct);
+        if (device is null) return NotFound(NotFoundError(deviceId));
+
+        if (!_agentMgr.IsAgentOnline(deviceId))
+        {
+            return StatusCode(503, new ErrorResponse
+            {
+                Code = "AGENT_OFFLINE",
+                Message = $"Device '{deviceId}' is currently offline."
+            });
+        }
+
+        var msg = new WsMessage
+        {
+            Type = WsMessageTypes.RequestFileList,
+            Payload = new FileListRequest { RemotePath = path ?? string.Empty }
+        };
+
+        var tcs = new TaskCompletionSource<WsMessage>(TaskCreationOptions.RunContinuationsAsynchronously);
+        _agentMgr.RegisterResponseHandler(msg.RequestId, tcs);
+
+        var sent = await _agentMgr.SendToAgentAsync(deviceId, msg, ct);
+        if (!sent)
+        {
+            return StatusCode(503, new ErrorResponse { Code = "AGENT_OFFLINE", Message = "Failed to dispatch file request to agent." });
+        }
+
+        using var timeoutCts = new CancellationTokenSource(TimeSpan.FromSeconds(30));
+        using var linkedCts = CancellationTokenSource.CreateLinkedTokenSource(ct, timeoutCts.Token);
+
+        try
+        {
+            var response = await tcs.Task.WaitAsync(linkedCts.Token);
+            return Ok(response.Payload);
+        }
+        catch (OperationCanceledException)
+        {
+            return StatusCode(504, new ErrorResponse { Code = "TIMEOUT", Message = "Agent file listing timed out." });
+        }
+    }
+
+    [HttpGet("{deviceId}/files/download")]
+    public async Task<IActionResult> DownloadFile(
+        string deviceId, [FromQuery] string path, CancellationToken ct = default)
+    {
+        var userId = GetUserId();
+        var device = await _devices.GetDeviceAsync(userId, deviceId, ct);
+        if (device is null) return NotFound(NotFoundError(deviceId));
+
+        if (!_agentMgr.IsAgentOnline(deviceId))
+        {
+            return StatusCode(503, new ErrorResponse { Code = "AGENT_OFFLINE", Message = $"Device '{deviceId}' is offline." });
+        }
+
+        var msg = new WsMessage
+        {
+            Type = WsMessageTypes.RequestFileGet,
+            Payload = new FileTransferRequest { RemotePath = path }
+        };
+
+        var tcs = new TaskCompletionSource<WsMessage>(TaskCreationOptions.RunContinuationsAsynchronously);
+        _agentMgr.RegisterResponseHandler(msg.RequestId, tcs);
+
+        var sent = await _agentMgr.SendToAgentAsync(deviceId, msg, ct);
+        if (!sent)
+        {
+            return StatusCode(503, new ErrorResponse { Code = "AGENT_OFFLINE", Message = "Failed to dispatch file download request." });
+        }
+
+        using var timeoutCts = new CancellationTokenSource(TimeSpan.FromSeconds(60));
+        using var linkedCts = CancellationTokenSource.CreateLinkedTokenSource(ct, timeoutCts.Token);
+
+        try
+        {
+            var response = await tcs.Task.WaitAsync(linkedCts.Token);
+            if (response.Payload is System.Text.Json.JsonElement elem)
+            {
+                var download = System.Text.Json.JsonSerializer.Deserialize<FileDownloadResponse>(
+                    elem.GetRawText(),
+                    new System.Text.Json.JsonSerializerOptions { PropertyNameCaseInsensitive = true });
+
+                if (download != null && !string.IsNullOrEmpty(download.Base64Data))
+                {
+                    byte[] bytes = Convert.FromBase64String(download.Base64Data);
+                    return File(bytes, "application/octet-stream", download.FileName);
+                }
+            }
+            return Ok(response.Payload);
+        }
+        catch (OperationCanceledException)
+        {
+            return StatusCode(504, new ErrorResponse { Code = "TIMEOUT", Message = "Agent file download timed out." });
+        }
+    }
+
     private int GetUserId()
     {
         var claim = User.FindFirst(ClaimTypes.NameIdentifier) ?? User.FindFirst("sub");

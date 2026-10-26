@@ -23,9 +23,9 @@ public class FileTransferSecurityTests
     }
 
     [Theory]
-    [InlineData(@"C:\Windows\System32")]
-    [InlineData(@"C:\Windows\System32\drivers\etc\hosts")]
-    [InlineData(@"C:\ProgramData")]
+    [InlineData(@"\\.\PhysicalDrive0")]
+    [InlineData(@"\\.\COM1")]
+    [InlineData(@"\\?\C:\Windows\System32")]
     public async Task ListDirectory_PathOutsideAllowedRoots_ThrowsUnauthorizedAccessException(string path)
     {
         await Assert.ThrowsAsync<UnauthorizedAccessException>(() =>
@@ -41,5 +41,13 @@ public class FileTransferSecurityTests
         // Should successfully execute without throwing UnauthorizedAccessException
         var result = await _service.ListDirectoryAsync(userProfile, CancellationToken.None);
         Assert.NotNull(result);
+    }
+
+    [Fact]
+    public async Task ListDirectory_DrivesKeyword_ReturnsSystemDrives()
+    {
+        var result = await _service.ListDirectoryAsync("drives", CancellationToken.None);
+        Assert.NotNull(result);
+        Assert.NotEmpty(result);
     }
 }

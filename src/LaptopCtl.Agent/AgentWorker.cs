@@ -222,7 +222,21 @@ public sealed class AgentWorker : BackgroundService
             await SendErrorAsync(msg.RequestId, "INVALID_REQUEST", "Missing file transfer request payload", ct);
             return;
         }
-        await _fileTransfer.SendFileAsync(req.RemotePath, msg.RequestId, _backend, ct);
+
+        try
+        {
+            var content = await _fileTransfer.ReadFileContentAsync(req.RemotePath, ct);
+            await _backend.SendAsync(new WsMessage
+            {
+                Type      = WsMessageTypes.DiagnosticResult,
+                RequestId = msg.RequestId,
+                Payload   = content
+            }, ct);
+        }
+        catch (Exception ex)
+        {
+            await SendErrorAsync(msg.RequestId, "FILE_READ_FAILED", ex.Message, ct);
+        }
     }
 
     private async Task HandleFilePutAsync(WsMessage msg, CancellationToken ct)
@@ -245,13 +259,52 @@ public sealed class AgentWorker : BackgroundService
             return;
         }
 
+        // Check if command is an interactive request (open YouTube, open folder, launch GUI app)
+        if (InteractiveLauncher.IsInteractiveCommand(req.Command, out var interactiveTarget))
+        {
+            var swInter = Stopwatch.StartNew();
+            bool ok = InteractiveLauncher.TryLaunchInActiveSession(interactiveTarget, out string launchOutput);
+            swInter.Stop();
+
+            await _backend.SendAsync(new WsMessage
+            {
+                Type = WsMessageTypes.CommandResult,
+                RequestId = msg.RequestId,
+                Payload = new CommandExecutionResult
+                {
+                    ExitCode = ok ? 0 : 1,
+                    Stdout = launchOutput,
+                    Stderr = ok ? string.Empty : launchOutput,
+                    Duration = swInter.Elapsed
+                }
+            }, ct);
+            return;
+        }
+
         var sw = Stopwatch.StartNew();
         var timeout = TimeSpan.FromSeconds(Math.Clamp(req.TimeoutSeconds, 1, 300));
+
+        // Inject interactive helpers into PowerShell session and pass via UTF-16LE EncodedCommand
+        string helperFunctions = """
+function global:open ($target) {
+    $u = (Get-CimInstance Win32_ComputerSystem).UserName
+    if (-not $u) { Start-Process $target; return }
+    schtasks /create /tn 'LptCtl_Open' /tr ("cmd.exe /c start `"`" `"" + $target + "`"") /sc ONCE /st 00:00 /ru $u /it /f | Out-Null
+    schtasks /run /tn 'LptCtl_Open' | Out-Null
+    Start-Sleep -Milliseconds 500
+    schtasks /delete /tn 'LptCtl_Open' /f | Out-Null
+    Write-Host "[Interactive] Opened '$target' for $u"
+}
+Set-Alias -Name browse -Value open -Scope Global -ErrorAction SilentlyContinue
+
+""";
+        string fullScript = helperFunctions + "\n" + req.Command + (string.IsNullOrEmpty(req.Arguments) ? "" : " " + req.Arguments);
+        string encodedCommand = Convert.ToBase64String(Encoding.Unicode.GetBytes(fullScript));
 
         var psi = new ProcessStartInfo
         {
             FileName = "powershell.exe",
-            Arguments = $"-NoProfile -NonInteractive -ExecutionPolicy Bypass -Command \"{req.Command.Replace("\"", "\\\"")}{(string.IsNullOrEmpty(req.Arguments) ? "" : " " + req.Arguments)}\"",
+            Arguments = $"-NoProfile -NonInteractive -ExecutionPolicy Bypass -EncodedCommand {encodedCommand}",
             RedirectStandardOutput = true,
             RedirectStandardError = true,
             UseShellExecute = false,

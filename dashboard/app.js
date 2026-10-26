@@ -166,6 +166,10 @@ function switchTab(tabId) {
   const pane = document.getElementById(`pane-${tabId}`);
   if (btn) btn.classList.add('active');
   if (pane) pane.classList.add('active');
+
+  if (tabId === 'files') {
+    loadFiles();
+  }
 }
 
 // Event Listeners
@@ -287,17 +291,15 @@ function setupEventListeners() {
     document.getElementById('terminal-output').innerHTML = '';
   });
 
-  // File explorer go
+  // File explorer go & navigation
   document.getElementById('btn-path-go').addEventListener('click', loadFiles);
-  document.getElementById('btn-path-up').addEventListener('click', () => {
-    const input = document.getElementById('files-current-path');
-    const parts = input.value.split(/[\\/]/).filter(p => p.length > 0);
-    if (parts.length > 1) {
-      parts.pop();
-      input.value = parts.join('\\');
+  document.getElementById('files-current-path').addEventListener('keydown', (e) => {
+    if (e.key === 'Enter') {
+      e.preventDefault();
       loadFiles();
     }
   });
+  document.getElementById('btn-path-up').addEventListener('click', navigateUp);
 
   // Search input filter
   document.getElementById('device-search-input').addEventListener('input', (e) => {
@@ -634,28 +636,73 @@ function appendTerminalLine(text, className = '') {
   screen.scrollTop = screen.scrollHeight;
 }
 
-// File Explorer
+// Live File Explorer
 async function loadFiles() {
-  const currentPath = document.getElementById('files-current-path').value;
+  const deviceId = state.selectedDeviceId;
+  const currentPath = document.getElementById('files-current-path').value.trim();
   const tbody = document.getElementById('files-tbody');
-  tbody.innerHTML = '';
+  tbody.innerHTML = `<tr><td colspan="5" style="text-align:center; padding: 2.5rem; color: var(--text-muted);"><span class="loading-spinner"></span> Querying directory from remote device...</td></tr>`;
 
-  MOCK_FILES.forEach(f => {
-    const tr = document.createElement('tr');
-    tr.innerHTML = `
-      <td><strong>${f.isDirectory ? '📁 ' : '📄 '} ${escapeHtml(f.name)}</strong></td>
-      <td>${f.isDirectory ? 'Directory' : 'File'}</td>
-      <td>${f.isDirectory ? '-' : `${(f.sizeBytes / 1024).toFixed(1)} KB`}</td>
-      <td>${new Date(f.lastModified).toLocaleDateString()}</td>
-      <td class="text-right">
-        ${f.isDirectory
-          ? `<button class="btn-secondary btn-sm" onclick="enterDirectory('${escapeHtml(f.fullPath)}')">Open</button>`
-          : `<button class="btn-primary btn-sm" onclick="downloadFile('${escapeHtml(f.name)}')">Download</button>`
-        }
-      </td>
-    `;
-    tbody.appendChild(tr);
-  });
+  if (!deviceId) {
+    tbody.innerHTML = `<tr><td colspan="5" style="text-align:center; padding: 2rem; color: var(--accent-amber);">Please select an online target computer from the dropdown above.</td></tr>`;
+    return;
+  }
+
+  if (!state.jwtToken) {
+    await autoAdminLogin();
+  }
+
+  try {
+    const url = `${API_BASE}/api/devices/${deviceId}/files?path=${encodeURIComponent(currentPath)}`;
+    const res = await fetch(url, {
+      headers: { 'Authorization': `Bearer ${state.jwtToken}` }
+    });
+
+    if (res.ok) {
+      const files = await res.json();
+      tbody.innerHTML = '';
+      if (!files || files.length === 0) {
+        tbody.innerHTML = `<tr><td colspan="5" style="text-align:center; padding: 2rem; color: var(--text-muted);">Folder is empty.</td></tr>`;
+        return;
+      }
+
+      // Sort folders first, then files alphabetically
+      files.sort((a, b) => {
+        if (a.isDirectory === b.isDirectory) return a.name.localeCompare(b.name);
+        return a.isDirectory ? -1 : 1;
+      });
+
+      files.forEach(f => {
+        const tr = document.createElement('tr');
+        const sizeText = f.isDirectory ? '-' : (f.sizeBytes > 1024 * 1024 ? (f.sizeBytes / (1024 * 1024)).toFixed(1) + ' MB' : (f.sizeBytes / 1024).toFixed(1) + ' KB');
+        const modifiedText = f.lastModified ? new Date(f.lastModified).toLocaleString() : '-';
+
+        tr.innerHTML = `
+          <td><strong>${f.isDirectory ? '📁' : '📄'} ${escapeHtml(f.name)}</strong></td>
+          <td>${f.isDirectory ? 'Directory' : 'File'}</td>
+          <td>${sizeText}</td>
+          <td>${modifiedText}</td>
+          <td class="text-right">
+            ${f.isDirectory
+              ? `<button class="btn-secondary btn-sm" onclick="enterDirectory('${escapeHtml(f.fullPath)}')">Open</button>`
+              : `<button class="btn-primary btn-sm" onclick="downloadFile('${escapeHtml(f.fullPath)}', '${escapeHtml(f.name)}')">Download</button>`
+            }
+          </td>
+        `;
+        tbody.appendChild(tr);
+      });
+      return;
+    } else {
+      let errMsg = 'Failed to load directory';
+      try {
+        const err = await res.json();
+        errMsg = err.message || errMsg;
+      } catch {}
+      tbody.innerHTML = `<tr><td colspan="5" style="text-align:center; padding: 2rem; color: var(--accent-red);">Failed to list directory: ${escapeHtml(errMsg)}</td></tr>`;
+    }
+  } catch (err) {
+    tbody.innerHTML = `<tr><td colspan="5" style="text-align:center; padding: 2rem; color: var(--accent-red);">Connection error: ${escapeHtml(err.message)}</td></tr>`;
+  }
 }
 
 window.enterDirectory = function(path) {
@@ -663,8 +710,52 @@ window.enterDirectory = function(path) {
   loadFiles();
 };
 
-window.downloadFile = function(fileName) {
-  alert(`Download initiated for: ${fileName}`);
+window.navigateUp = function() {
+  const input = document.getElementById('files-current-path');
+  let current = input.value.trim().replace(/[/\\]+$/, '');
+  if (!current || current.toLowerCase() === 'drives') return;
+
+  const lastSlash = Math.max(current.lastIndexOf('\\'), current.lastIndexOf('/'));
+  if (lastSlash > 2) {
+    input.value = current.substring(0, lastSlash);
+  } else if (lastSlash === 2 && current.length > 3) {
+    input.value = current.substring(0, 3); // e.g. C:\
+  } else {
+    input.value = 'drives'; // All drives
+  }
+  loadFiles();
+};
+
+window.downloadFile = async function(filePath, fileName) {
+  const deviceId = state.selectedDeviceId;
+  if (!deviceId) return;
+
+  try {
+    const res = await fetch(`${API_BASE}/api/devices/${deviceId}/files/download?path=${encodeURIComponent(filePath)}`, {
+      headers: { 'Authorization': `Bearer ${state.jwtToken}` }
+    });
+
+    if (res.ok) {
+      const blob = await res.blob();
+      const url = window.URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = fileName || 'download';
+      document.body.appendChild(a);
+      a.click();
+      a.remove();
+      window.URL.revokeObjectURL(url);
+    } else {
+      let msg = 'Download failed';
+      try {
+        const err = await res.json();
+        msg = err.message || msg;
+      } catch {}
+      alert(`Download failed: ${msg}`);
+    }
+  } catch (err) {
+    alert(`Download error: ${err.message}`);
+  }
 };
 
 // Enrollment Code Generation

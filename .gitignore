@@ -9,3 +9,6 @@
 .idea/
 *.db
 *.log
+*.pdb
+scratch/
+installer/appsettings.Development.json

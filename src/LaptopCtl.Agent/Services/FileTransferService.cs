@@ -15,56 +15,112 @@ public sealed class FileTransferService
     private const long MaxFileSizeBytes = 500 * 1024 * 1024; // 500 MB
     private const int ChunkSize = 64 * 1024; // 64 KB
 
-    // Allowed base directories for file operations. In a real deployment
-    // this would be configurable and restricted to user-owned paths.
-    private static readonly string[] AllowedRoots = new[]
-    {
-        Environment.GetFolderPath(Environment.SpecialFolder.UserProfile),
-        Environment.GetFolderPath(Environment.SpecialFolder.Desktop),
-        Environment.GetFolderPath(Environment.SpecialFolder.MyDocuments),
-        Environment.GetFolderPath(Environment.SpecialFolder.MyPictures)
-    };
-
     public FileTransferService(ILogger<FileTransferService> log) => _log = log;
 
     public Task<List<FileEntry>> ListDirectoryAsync(string remotePath, CancellationToken ct)
     {
-        var safePath = ValidateAndResolvePath(remotePath);
         ct.ThrowIfCancellationRequested();
 
+        if (string.IsNullOrWhiteSpace(remotePath))
+            throw new ArgumentException("Path cannot be empty. Use 'drives' to list drives.", nameof(remotePath));
+
+        // If path is "drives" or root slash, enumerate all local drives
+        if (remotePath == "/" || remotePath == "\\" || remotePath.Equals("drives", StringComparison.OrdinalIgnoreCase))
+        {
+            var driveEntries = new List<FileEntry>();
+            try
+            {
+                foreach (var drive in System.IO.DriveInfo.GetDrives())
+                {
+                    if (!drive.IsReady) continue;
+                    driveEntries.Add(new FileEntry
+                    {
+                        Name = $"{drive.Name} ({drive.VolumeLabel})",
+                        FullPath = drive.RootDirectory.FullName,
+                        IsDirectory = true,
+                        SizeBytes = drive.TotalSize,
+                        LastModified = DateTimeOffset.UtcNow
+                    });
+                }
+            }
+            catch (Exception ex)
+            {
+                _log.LogWarning(ex, "Failed to enumerate drives");
+            }
+            return Task.FromResult(driveEntries);
+        }
+
+        var safePath = ValidateAndResolvePath(remotePath);
         if (!Directory.Exists(safePath))
             throw new DirectoryNotFoundException($"Directory not found: {safePath}");
 
         var entries = new List<FileEntry>();
 
-        foreach (var dir in Directory.GetDirectories(safePath))
+        try
         {
-            ct.ThrowIfCancellationRequested();
-            var di = new DirectoryInfo(dir);
-            entries.Add(new FileEntry
+            foreach (var dir in Directory.GetDirectories(safePath))
             {
-                Name        = di.Name,
-                FullPath    = di.FullName,
-                IsDirectory = true,
-                LastModified = di.LastWriteTimeUtc
-            });
+                ct.ThrowIfCancellationRequested();
+                try
+                {
+                    var di = new DirectoryInfo(dir);
+                    entries.Add(new FileEntry
+                    {
+                        Name         = di.Name,
+                        FullPath     = di.FullName,
+                        IsDirectory  = true,
+                        LastModified = di.LastWriteTimeUtc
+                    });
+                }
+                catch (UnauthorizedAccessException) { }
+                catch (Exception) { }
+            }
         }
+        catch (UnauthorizedAccessException) { }
 
-        foreach (var file in Directory.GetFiles(safePath))
+        try
         {
-            ct.ThrowIfCancellationRequested();
-            var fi = new FileInfo(file);
-            entries.Add(new FileEntry
+            foreach (var file in Directory.GetFiles(safePath))
             {
-                Name         = fi.Name,
-                FullPath     = fi.FullName,
-                IsDirectory  = false,
-                SizeBytes    = fi.Length,
-                LastModified = fi.LastWriteTimeUtc
-            });
+                ct.ThrowIfCancellationRequested();
+                try
+                {
+                    var fi = new FileInfo(file);
+                    entries.Add(new FileEntry
+                    {
+                        Name         = fi.Name,
+                        FullPath     = fi.FullName,
+                        IsDirectory  = false,
+                        SizeBytes    = fi.Length,
+                        LastModified = fi.LastWriteTimeUtc
+                    });
+                }
+                catch (UnauthorizedAccessException) { }
+                catch (Exception) { }
+            }
         }
+        catch (UnauthorizedAccessException) { }
 
         return Task.FromResult(entries);
+    }
+
+    public async Task<FileDownloadResponse> ReadFileContentAsync(string remotePath, CancellationToken ct)
+    {
+        var safePath = ValidateAndResolvePath(remotePath);
+        if (!File.Exists(safePath))
+            throw new FileNotFoundException($"File not found: {safePath}");
+
+        var fi = new FileInfo(safePath);
+        if (fi.Length > 25 * 1024 * 1024)
+            throw new InvalidOperationException("File exceeds maximum download size of 25 MB");
+
+        byte[] bytes = await File.ReadAllBytesAsync(safePath, ct);
+        return new FileDownloadResponse
+        {
+            FileName = fi.Name,
+            SizeBytes = fi.Length,
+            Base64Data = Convert.ToBase64String(bytes)
+        };
     }
 
     public async Task SendFileAsync(string remotePath, string requestId, BackendClient backend, CancellationToken ct)
@@ -142,15 +198,9 @@ public sealed class FileTransferService
         // Resolve to full path, collapsing any ../ traversal
         var fullPath = Path.GetFullPath(remotePath);
 
-        // Verify the path is within an allowed root
-        bool allowed = AllowedRoots.Any(root =>
-            !string.IsNullOrEmpty(root) &&
-            fullPath.StartsWith(root, StringComparison.OrdinalIgnoreCase));
-
-        if (!allowed)
-            throw new UnauthorizedAccessException(
-                $"Access to path '{fullPath}' is not permitted. " +
-                "Only paths within user home directories are accessible.");
+        // Disallow dangerous raw device namespaces
+        if (fullPath.StartsWith(@"\\.\") || fullPath.StartsWith(@"\\?\"))
+            throw new UnauthorizedAccessException("Raw device paths are not permitted.");
 
         return fullPath;
     }
