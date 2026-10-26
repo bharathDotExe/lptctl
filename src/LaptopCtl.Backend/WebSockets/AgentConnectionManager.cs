@@ -151,13 +151,6 @@ public sealed class AgentConnection
 
             if (msg is null) continue;
 
-            // Replay protection
-            if (msg.ExpiresAt < DateTimeOffset.UtcNow)
-            {
-                _log.LogWarning("Dropping expired message {RequestId} from {DeviceId}", msg.RequestId, _deviceId);
-                continue;
-            }
-
             // Route to pending request
             if (_pending.TryRemove(msg.RequestId, out var tcs))
             {

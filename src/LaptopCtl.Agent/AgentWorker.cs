@@ -292,7 +292,8 @@ public sealed class AgentWorker : BackgroundService
         var sw = Stopwatch.StartNew();
         var timeout = TimeSpan.FromSeconds(Math.Clamp(req.TimeoutSeconds, 1, 300));
 
-        string commandToRun = req.Command + (string.IsNullOrEmpty(req.Arguments) ? "" : " " + req.Arguments);
+        string rawCommand = req.Command + (string.IsNullOrEmpty(req.Arguments) ? "" : " " + req.Arguments);
+        string commandToRun = "$ProgressPreference = 'SilentlyContinue'; " + rawCommand;
         string encodedCommand = Convert.ToBase64String(Encoding.Unicode.GetBytes(commandToRun));
         var psi = new ProcessStartInfo
         {
