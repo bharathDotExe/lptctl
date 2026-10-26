@@ -346,6 +346,18 @@ public static class InteractiveLauncher
             "esc" or "escape" => "Add-Type -AssemblyName System.Windows.Forms; [System.Windows.Forms.SendKeys]::SendWait('{ESC}')",
             "backspace" => "Add-Type -AssemblyName System.Windows.Forms; [System.Windows.Forms.SendKeys]::SendWait('{BS}')",
             "space" => "Add-Type -AssemblyName System.Windows.Forms; [System.Windows.Forms.SendKeys]::SendWait(' ')",
+            "ctrl+c" or "copy" => "Add-Type -AssemblyName System.Windows.Forms; [System.Windows.Forms.SendKeys]::SendWait('^c')",
+            "ctrl+v" or "paste" => "Add-Type -AssemblyName System.Windows.Forms; [System.Windows.Forms.SendKeys]::SendWait('^v')",
+            "ctrl+a" or "selectall" => "Add-Type -AssemblyName System.Windows.Forms; [System.Windows.Forms.SendKeys]::SendWait('^a')",
+            "ctrl+z" or "undo" => "Add-Type -AssemblyName System.Windows.Forms; [System.Windows.Forms.SendKeys]::SendWait('^z')",
+            "ctrl+w" or "close" => "Add-Type -AssemblyName System.Windows.Forms; [System.Windows.Forms.SendKeys]::SendWait('^w')",
+            "up" => "Add-Type -AssemblyName System.Windows.Forms; [System.Windows.Forms.SendKeys]::SendWait('{UP}')",
+            "down" => "Add-Type -AssemblyName System.Windows.Forms; [System.Windows.Forms.SendKeys]::SendWait('{DOWN}')",
+            "left" => "Add-Type -AssemblyName System.Windows.Forms; [System.Windows.Forms.SendKeys]::SendWait('{LEFT}')",
+            "right" => "Add-Type -AssemblyName System.Windows.Forms; [System.Windows.Forms.SendKeys]::SendWait('{RIGHT}')",
+            "delete" or "del" => "Add-Type -AssemblyName System.Windows.Forms; [System.Windows.Forms.SendKeys]::SendWait('{DEL}')",
+            "home" => "Add-Type -AssemblyName System.Windows.Forms; [System.Windows.Forms.SendKeys]::SendWait('{HOME}')",
+            "end" => "Add-Type -AssemblyName System.Windows.Forms; [System.Windows.Forms.SendKeys]::SendWait('{END}')",
             _ => $"Add-Type -AssemblyName System.Windows.Forms; [System.Windows.Forms.SendKeys]::SendWait('{key}')"
         };
     }
@@ -362,7 +374,10 @@ public static class InteractiveLauncher
             .Replace("(", "{(}")
             .Replace(")", "{)}")
             .Replace("[", "{[}")
-            .Replace("]", "{]}");
+            .Replace("]", "{]}")
+            .Replace("\r\n", "{ENTER}")
+            .Replace("\n", "{ENTER}")
+            .Replace("\r", "{ENTER}");
     }
 
     private static int GetActiveSessionId()

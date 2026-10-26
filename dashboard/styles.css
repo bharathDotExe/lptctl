@@ -971,8 +971,120 @@ body {
   font-size: 0.9rem;
   outline: none;
   transition: border-color 0.2s;
+  width: 100%;
 }
 
 .rc-input:focus, .rc-textarea:focus {
   border-color: var(--accent-blue);
+}
+
+.rc-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(360px, 1fr));
+  gap: 1.5rem;
+  margin-top: 1.25rem;
+}
+
+.rc-card {
+  background: var(--bg-card);
+  border: 1px solid var(--border-color);
+  border-radius: var(--radius-lg);
+  padding: 1.5rem;
+  display: flex;
+  flex-direction: column;
+  gap: 1rem;
+}
+
+.rc-card-header {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+}
+
+.rc-card-title {
+  font-size: 1.1rem;
+  font-weight: 600;
+  color: var(--text-primary);
+  margin: 0;
+}
+
+.rc-card-desc {
+  font-size: 0.85rem;
+  color: var(--text-muted);
+  margin-top: -0.5rem;
+  line-height: 1.4;
+}
+
+.rc-key-group {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+}
+
+.rc-key-btn {
+  background: var(--bg-subtle);
+  border: 1px solid var(--border-color);
+  color: var(--text-primary);
+  padding: 0.45rem 0.8rem;
+  border-radius: var(--radius-md);
+  font-size: 0.85rem;
+  font-family: var(--font-mono);
+  font-weight: 500;
+  cursor: pointer;
+  transition: all 0.15s ease;
+  user-select: none;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.35rem;
+}
+
+.rc-key-btn:hover {
+  background: var(--bg-hover);
+  border-color: var(--accent-blue);
+  color: #fff;
+  transform: translateY(-1px);
+}
+
+.rc-key-btn:active {
+  transform: translateY(1px);
+  background: var(--accent-blue);
+}
+
+.rc-status-banner {
+  margin-top: 1.5rem;
+  background: var(--bg-card);
+  border: 1px solid var(--border-color);
+  border-radius: var(--radius-md);
+  padding: 1rem 1.25rem;
+  font-family: var(--font-mono);
+  font-size: 0.85rem;
+  color: var(--text-muted);
+  white-space: pre-wrap;
+  word-break: break-all;
+  max-height: 220px;
+  overflow-y: auto;
+}
+
+.rc-status-banner.success {
+  border-color: rgba(16, 185, 129, 0.4);
+  color: #34d399;
+  background: rgba(16, 185, 129, 0.05);
+}
+
+.rc-status-banner.error {
+  border-color: rgba(239, 68, 68, 0.4);
+  color: #f87171;
+  background: rgba(239, 68, 68, 0.05);
+}
+
+.rc-coord-row {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  flex-wrap: wrap;
+}
+
+.rc-coord-input {
+  width: 100px !important;
 }

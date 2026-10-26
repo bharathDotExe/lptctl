@@ -258,18 +258,22 @@ function setupEventListeners() {
   const inspectorSelect = document.getElementById('inspector-device-select');
   const terminalSelect  = document.getElementById('terminal-device-select');
   const filesSelect     = document.getElementById('files-device-select');
+  const rcSelect        = document.getElementById('rc-device-select');
 
-  [inspectorSelect, terminalSelect, filesSelect].forEach(select => {
+  [inspectorSelect, terminalSelect, filesSelect, rcSelect].filter(Boolean).forEach(select => {
     select.addEventListener('change', (e) => {
       state.selectedDeviceId = e.target.value;
-      inspectorSelect.value = state.selectedDeviceId;
-      terminalSelect.value = state.selectedDeviceId;
-      filesSelect.value = state.selectedDeviceId;
+      if (inspectorSelect) inspectorSelect.value = state.selectedDeviceId;
+      if (terminalSelect) terminalSelect.value = state.selectedDeviceId;
+      if (filesSelect) filesSelect.value = state.selectedDeviceId;
+      if (rcSelect) rcSelect.value = state.selectedDeviceId;
 
       if (state.activeTab === 'inspector') refreshDiagnostics();
       if (state.activeTab === 'files') loadFiles();
     });
   });
+
+  initRemoteControl();
 
   // Terminal submission
   const terminalForm = document.getElementById('terminal-form');
@@ -432,8 +436,9 @@ function populateDeviceDropdowns() {
   const selects = [
     document.getElementById('inspector-device-select'),
     document.getElementById('terminal-device-select'),
-    document.getElementById('files-device-select')
-  ];
+    document.getElementById('files-device-select'),
+    document.getElementById('rc-device-select')
+  ].filter(Boolean);
 
   selects.forEach(select => {
     select.innerHTML = '<option value="">Select target computer...</option>';
@@ -946,3 +951,167 @@ function escapeHtml(str) {
   if (!str) return '';
   return str.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;").replace(/'/g, "&#039;");
 }
+
+// ─── Remote Control (Keyboard & Mouse) ─────────────────────────────────────────
+async function executeRemoteCommand(deviceId, command) {
+  if (!state.jwtToken) {
+    openAuthModal('Please sign in as Administrator to send remote input.');
+    throw new Error('Not authenticated.');
+  }
+
+  const targetId = deviceId || state.selectedDeviceId;
+  if (!targetId) {
+    throw new Error('No target computer selected. Please select a device from the dropdown.');
+  }
+
+  const res = await fetch(`${API_BASE}/api/devices/${targetId}/exec`, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      'Authorization': `Bearer ${state.jwtToken}`
+    },
+    body: JSON.stringify({
+      command: command,
+      workingDirectory: state.currentDirectory || 'C:\\',
+      timeoutSeconds: 30
+    })
+  });
+
+  if (!res.ok) {
+    let errMsg = `HTTP ${res.status}`;
+    try {
+      const err = await res.json();
+      errMsg = err.message || errMsg;
+    } catch {}
+    throw new Error(errMsg);
+  }
+
+  return await res.json();
+}
+
+function initRemoteControl() {
+  const rcBanner = document.getElementById('rc-status-banner');
+  const setBanner = (text, type = 'normal') => {
+    if (!rcBanner) return;
+    rcBanner.textContent = `[${new Date().toLocaleTimeString()}] ${text}`;
+    rcBanner.className = `rc-status-banner ${type}`;
+  };
+
+  const runRcCommand = async (cmd, actionDesc) => {
+    try {
+      setBanner(`Executing: ${actionDesc}...`, 'normal');
+      const result = await executeRemoteCommand(state.selectedDeviceId, cmd);
+      const output = result.stdout || result.stderr || 'Action dispatched to active user session.';
+      setBanner(`${actionDesc} completed:\n${output}`, result.exitCode === 0 ? 'success' : 'error');
+    } catch (err) {
+      setBanner(`Execution failed: ${err.message}`, 'error');
+    }
+  };
+
+  // 1. Keyboard text typing in active window
+  const btnTypeActive = document.getElementById('btn-rc-type-active');
+  const keyboardText = document.getElementById('rc-keyboard-text');
+  if (btnTypeActive && keyboardText) {
+    btnTypeActive.addEventListener('click', () => {
+      const text = keyboardText.value;
+      if (!text) {
+        setBanner('Please enter text to type into active window.', 'error');
+        return;
+      }
+      runRcCommand(`type ${text}`, `Typing "${text.substring(0, 30)}${text.length > 30 ? '...' : ''}"`);
+    });
+  }
+
+  // 2. Open Notepad & Type
+  const btnTypeNotepad = document.getElementById('btn-rc-type-notepad');
+  if (btnTypeNotepad && keyboardText) {
+    btnTypeNotepad.addEventListener('click', () => {
+      const text = keyboardText.value.trim() || 'Hello from LaptopCtl Remote Control!';
+      const escaped = text.replace(/`/g, '``').replace(/"/g, '`"');
+      const script = `Start-Process notepad; Start-Sleep -Seconds 2; Add-Type -AssemblyName System.Windows.Forms; [System.Windows.Forms.SendKeys]::SendWait("${escaped}")`;
+      runRcCommand(script, 'Open Notepad & Type Text');
+    });
+  }
+
+  // Clear text
+  const btnClearText = document.getElementById('btn-rc-clear-text');
+  if (btnClearText && keyboardText) {
+    btnClearText.addEventListener('click', () => {
+      keyboardText.value = '';
+    });
+  }
+
+  // 3. Quick keystrokes and hotkeys
+  document.querySelectorAll('[data-hotkey]').forEach(btn => {
+    btn.addEventListener('click', () => {
+      const hotkey = btn.getAttribute('data-hotkey');
+      if (hotkey) {
+        runRcCommand(`hotkey ${hotkey}`, `Keystroke [${hotkey.toUpperCase()}]`);
+      }
+    });
+  });
+
+  // 4. Custom SendKeys sequence
+  const btnSendCustom = document.getElementById('btn-rc-send-custom-keys');
+  const customInput = document.getElementById('rc-custom-keys');
+  if (btnSendCustom && customInput) {
+    btnSendCustom.addEventListener('click', () => {
+      const keys = customInput.value.trim();
+      if (!keys) return;
+      runRcCommand(`sendkeys ${keys}`, `Custom Key Sequence "${keys}"`);
+    });
+    customInput.addEventListener('keydown', (e) => {
+      if (e.key === 'Enter') {
+        e.preventDefault();
+        btnSendCustom.click();
+      }
+    });
+  }
+
+  // 5. Mouse clicks
+  const btnClickLeft = document.getElementById('btn-rc-click-left');
+  if (btnClickLeft) {
+    btnClickLeft.addEventListener('click', () => runRcCommand('click', 'Mouse Left Click'));
+  }
+  const btnClickRight = document.getElementById('btn-rc-click-right');
+  if (btnClickRight) {
+    btnClickRight.addEventListener('click', () => runRcCommand('rightclick', 'Mouse Right Click'));
+  }
+  const btnClickDouble = document.getElementById('btn-rc-click-double');
+  if (btnClickDouble) {
+    btnClickDouble.addEventListener('click', () => runRcCommand('doubleclick', 'Mouse Double Click'));
+  }
+
+  // 6. Coordinate click (X, Y)
+  const btnClickCoords = document.getElementById('btn-rc-click-coords');
+  const mouseX = document.getElementById('rc-mouse-x');
+  const mouseY = document.getElementById('rc-mouse-y');
+  if (btnClickCoords && mouseX && mouseY) {
+    btnClickCoords.addEventListener('click', () => {
+      const x = parseInt(mouseX.value) || 0;
+      const y = parseInt(mouseY.value) || 0;
+      runRcCommand(`click ${x} ${y}`, `Mouse Click at (${x}, ${y})`);
+    });
+  }
+
+  // 7. On-screen popup alert
+  const btnSendAlert = document.getElementById('btn-rc-send-alert');
+  const alertText = document.getElementById('rc-alert-text');
+  if (btnSendAlert && alertText) {
+    btnSendAlert.addEventListener('click', () => {
+      const msg = alertText.value.trim();
+      if (!msg) {
+        setBanner('Please enter an alert message to display.', 'error');
+        return;
+      }
+      runRcCommand(`alert ${msg}`, `Screen Notification "${msg}"`);
+    });
+    alertText.addEventListener('keydown', (e) => {
+      if (e.key === 'Enter') {
+        e.preventDefault();
+        btnSendAlert.click();
+      }
+    });
+  }
+}
+
