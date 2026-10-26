@@ -1,0 +1,153 @@
+using LaptopCtl.Backend.Services;
+using LaptopCtl.Backend.WebSockets;
+using LaptopCtl.Shared.Models;
+using Microsoft.AspNetCore.Authorization;
+using Microsoft.AspNetCore.Mvc;
+using System.Security.Claims;
+
+namespace LaptopCtl.Backend.Controllers;
+
+[Authorize]
+[ApiController]
+[Route("api/devices")]
+public sealed class DevicesController : ControllerBase
+{
+    private readonly DeviceService _devices;
+    private readonly SessionService _sessions;
+    private readonly AgentConnectionManager _agentMgr;
+
+    public DevicesController(DeviceService devices, SessionService sessions,
+        AgentConnectionManager agentMgr)
+    {
+        _devices  = devices;
+        _sessions = sessions;
+        _agentMgr = agentMgr;
+    }
+
+    [HttpGet]
+    public async Task<IActionResult> List(
+        [FromQuery] int page = 1, [FromQuery] int pageSize = 20, CancellationToken ct = default)
+    {
+        var userId = GetUserId();
+        var result = await _devices.ListDevicesAsync(userId, page, pageSize, ct);
+        return Ok(result);
+    }
+
+    [HttpGet("{deviceId}")]
+    public async Task<IActionResult> Get(string deviceId, CancellationToken ct)
+    {
+        var userId = GetUserId();
+        var device = await _devices.GetDeviceAsync(userId, deviceId, ct);
+        if (device is null) return NotFound(NotFoundError(deviceId));
+
+        return Ok(device);
+    }
+
+    [HttpGet("{deviceId}/status")]
+    public async Task<IActionResult> Status(string deviceId, CancellationToken ct)
+    {
+        var userId = GetUserId();
+        var device = await _devices.GetDeviceAsync(userId, deviceId, ct);
+        if (device is null) return NotFound(NotFoundError(deviceId));
+
+        return Ok(new
+        {
+            device.DeviceId,
+            device.IsOnline,
+            device.LastSeen,
+            IsAgentConnected = _agentMgr.IsAgentOnline(deviceId)
+        });
+    }
+
+    [HttpDelete("{deviceId}")]
+    public async Task<IActionResult> Revoke(string deviceId, CancellationToken ct)
+    {
+        var userId = GetUserId();
+        var ip     = HttpContext.Connection.RemoteIpAddress?.ToString();
+        var ok     = await _devices.RevokeDeviceAsync(userId, deviceId, ip, ct);
+
+        if (!ok) return NotFound(NotFoundError(deviceId));
+        return Ok(new { Message = $"Device {deviceId} revoked." });
+    }
+
+    [HttpPost("{deviceId}/sessions")]
+    public async Task<IActionResult> CreateSession(string deviceId, CancellationToken ct)
+    {
+        var userId = GetUserId();
+        try
+        {
+            var session = await _sessions.CreateSessionAsync(userId, deviceId, userId, ct);
+            return Ok(session);
+        }
+        catch (UnauthorizedAccessException)
+        {
+            return Forbid();
+        }
+    }
+
+    [HttpGet("{deviceId}/sessions")]
+    public async Task<IActionResult> ListSessions(CancellationToken ct)
+    {
+        var userId = GetUserId();
+        var list   = await _sessions.ListActiveSessionsAsync(userId, ct);
+        return Ok(list);
+    }
+
+    [HttpPost("{deviceId}/exec")]
+    public async Task<IActionResult> ExecuteCommand(
+        string deviceId, [FromBody] CommandExecutionRequest request, CancellationToken ct)
+    {
+        var userId = GetUserId();
+        var device = await _devices.GetDeviceAsync(userId, deviceId, ct);
+        if (device is null) return NotFound(NotFoundError(deviceId));
+
+        if (!_agentMgr.IsAgentOnline(deviceId))
+        {
+            return StatusCode(503, new ErrorResponse
+            {
+                Code = "AGENT_OFFLINE",
+                Message = $"Device '{deviceId}' is currently offline."
+            });
+        }
+
+        var msg = new WsMessage
+        {
+            Type = WsMessageTypes.RequestCommand,
+            Payload = request
+        };
+
+        var tcs = new TaskCompletionSource<WsMessage>(TaskCreationOptions.RunContinuationsAsynchronously);
+        _agentMgr.RegisterResponseHandler(msg.RequestId, tcs);
+
+        var sent = await _agentMgr.SendToAgentAsync(deviceId, msg, ct);
+        if (!sent)
+        {
+            return StatusCode(503, new ErrorResponse { Code = "AGENT_OFFLINE", Message = "Failed to dispatch command to agent." });
+        }
+
+        using var timeoutCts = new CancellationTokenSource(TimeSpan.FromSeconds(Math.Min(request.TimeoutSeconds + 5, 60)));
+        using var linkedCts = CancellationTokenSource.CreateLinkedTokenSource(ct, timeoutCts.Token);
+
+        try
+        {
+            var response = await tcs.Task.WaitAsync(linkedCts.Token);
+            return Ok(response.Payload);
+        }
+        catch (OperationCanceledException)
+        {
+            return StatusCode(504, new ErrorResponse { Code = "TIMEOUT", Message = "Agent command execution timed out." });
+        }
+    }
+
+    private int GetUserId()
+    {
+        var claim = User.FindFirst(ClaimTypes.NameIdentifier) ?? User.FindFirst("sub");
+        return int.Parse(claim?.Value ?? "0");
+    }
+
+    private static ErrorResponse NotFoundError(string deviceId) => new()
+    {
+        Code    = "DEVICE_NOT_FOUND",
+        Message = $"Device '{deviceId}' not found or not owned by this account."
+    };
+}

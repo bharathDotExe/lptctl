@@ -1,0 +1,497 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>LaptopCtl — The Complete Non-Techie Setup & User Guide</title>
+<style>
+  @page {
+    size: A4;
+    margin: 12mm 14mm;
+  }
+  * {
+    box-sizing: border-box;
+    margin: 0;
+    padding: 0;
+  }
+  body {
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+    color: #1F2937;
+    background: #FFFFFF;
+    line-height: 1.45;
+    font-size: 10pt;
+  }
+
+  /* Page container & page breaks */
+  .page {
+    page-break-after: always;
+    padding-bottom: 5mm;
+  }
+  .page:last-child {
+    page-break-after: avoid;
+  }
+
+  /* Header */
+  .header {
+    border-bottom: 2px solid #2563EB;
+    padding-bottom: 8px;
+    margin-bottom: 12px;
+    display: flex;
+    justify-content: space-between;
+    align-items: flex-end;
+  }
+  .header h1 {
+    font-size: 18pt;
+    font-weight: 800;
+    color: #1E3A8A;
+    letter-spacing: -0.5px;
+  }
+  .header .tagline {
+    font-size: 8.5pt;
+    color: #6B7280;
+    font-weight: 500;
+  }
+  .header .meta {
+    text-align: right;
+    font-size: 8pt;
+    color: #2563EB;
+    font-weight: 600;
+  }
+
+  /* Section Title */
+  h2 {
+    font-size: 12pt;
+    font-weight: 700;
+    color: #1F2937;
+    margin-top: 10px;
+    margin-bottom: 6px;
+    display: flex;
+    align-items: center;
+    gap: 6px;
+  }
+  h2 .badge {
+    background: #2563EB;
+    color: #FFFFFF;
+    font-size: 8pt;
+    padding: 2px 7px;
+    border-radius: 4px;
+    font-weight: 700;
+  }
+
+  p {
+    margin-bottom: 6px;
+    color: #374151;
+  }
+
+  /* Step Boxes */
+  .step-card {
+    border: 1px solid #E5E7EB;
+    border-left: 4px solid #2563EB;
+    border-radius: 6px;
+    padding: 8px 12px;
+    margin-bottom: 8px;
+    background: #F9FAFB;
+  }
+  .step-card.green {
+    border-left-color: #10B981;
+    background: #ECFDF5;
+  }
+  .step-card.purple {
+    border-left-color: #8B5CF6;
+    background: #F5F3FF;
+  }
+  .step-card h3 {
+    font-size: 9.5pt;
+    font-weight: 700;
+    color: #111827;
+    margin-bottom: 3px;
+    display: flex;
+    align-items: center;
+    gap: 6px;
+  }
+  .step-num {
+    background: #2563EB;
+    color: white;
+    width: 18px;
+    height: 18px;
+    border-radius: 50%;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 8pt;
+    font-weight: bold;
+  }
+  .step-card.green .step-num { background: #10B981; }
+  .step-card.purple .step-num { background: #8B5CF6; }
+
+  /* Code Block */
+  .code-box {
+    background: #111827;
+    color: #F3F4F6;
+    border-radius: 5px;
+    padding: 6px 10px;
+    margin: 4px 0 6px 0;
+    font-family: Consolas, "Courier New", monospace;
+    font-size: 8.5pt;
+    line-height: 1.35;
+    word-break: break-all;
+    border: 1px solid #374151;
+  }
+  .code-box .comment { color: #9CA3AF; font-style: italic; }
+  .code-box .cmd { color: #60A5FA; font-weight: 600; }
+  .code-box .param { color: #34D399; }
+  .code-box .highlight { color: #FBBF24; font-weight: bold; }
+
+  /* Diagram Box */
+  .diagram-box {
+    background: #EFF6FF;
+    border: 1px solid #BFDBFE;
+    border-radius: 6px;
+    padding: 8px 12px;
+    margin-bottom: 10px;
+    font-size: 8.5pt;
+    display: flex;
+    justify-content: space-around;
+    align-items: center;
+    text-align: center;
+  }
+  .diagram-node {
+    background: #FFFFFF;
+    border: 1px solid #93C5FD;
+    padding: 5px 8px;
+    border-radius: 5px;
+    font-weight: 600;
+    color: #1E40AF;
+  }
+  .diagram-arrow {
+    color: #2563EB;
+    font-weight: 800;
+    font-size: 11pt;
+  }
+
+  /* Tables */
+  table {
+    width: 100%;
+    border-collapse: collapse;
+    font-size: 8.5pt;
+    margin: 6px 0 10px 0;
+  }
+  th {
+    background: #F3F4F6;
+    color: #374151;
+    text-align: left;
+    padding: 5px 8px;
+    font-weight: 700;
+    border-bottom: 2px solid #E5E7EB;
+  }
+  td {
+    padding: 5px 8px;
+    border-bottom: 1px solid #E5E7EB;
+    color: #1F2937;
+    vertical-align: top;
+  }
+  tr:nth-child(even) td {
+    background: #F9FAFB;
+  }
+
+  /* Note callout */
+  .alert-note {
+    background: #FEF3C7;
+    border: 1px solid #F59E0B;
+    border-radius: 5px;
+    padding: 6px 10px;
+    font-size: 8.5pt;
+    color: #92400E;
+    margin: 6px 0;
+  }
+  .alert-tip {
+    background: #ECFDF5;
+    border: 1px solid #10B981;
+    border-radius: 5px;
+    padding: 6px 10px;
+    font-size: 8.5pt;
+    color: #065F46;
+    margin: 6px 0;
+  }
+
+  .footer {
+    border-top: 1px solid #E5E7EB;
+    margin-top: 8px;
+    padding-top: 4px;
+    font-size: 7.5pt;
+    color: #9CA3AF;
+    display: flex;
+    justify-content: space-between;
+  }
+</style>
+</head>
+<body>
+
+<!-- ================= PAGE 1: 3-MINUTE ZERO-GUESSWORK QUICKSTART ================= -->
+<div class="page">
+  <div class="header">
+    <div>
+      <h1>LaptopCtl — Easy Step-by-Step User Guide</h1>
+      <div class="tagline">Control Any Windows Laptop Remotely with Simple Code Commands</div>
+    </div>
+    <div class="meta">
+      PAGE 1 OF 3<br>
+      Local Quickstart
+    </div>
+  </div>
+
+  <h2><span class="badge">CONCEPT</span> How LaptopCtl Works in Plain English</h2>
+  <div class="diagram-box">
+    <div class="diagram-node">YOUR COMPUTER<br><span style="font-size:7pt; color:#6B7280;">(You type commands here)</span></div>
+    <div class="diagram-arrow">➔</div>
+    <div class="diagram-node" style="background:#DBEAFE; border-color:#2563EB;">CENTRAL SERVER<br><span style="font-size:7pt; color:#2563EB;">(Connects both computers)</span></div>
+    <div class="diagram-arrow">➔</div>
+    <div class="diagram-node">TARGET LAPTOP<br><span style="font-size:7pt; color:#6B7280;">(Computer you want to control)</span></div>
+  </div>
+  <p>Target laptops <strong>never need router port forwarding or special Wi-Fi settings</strong>. Both computers talk to your central server through an encrypted tunnel.</p>
+
+  <h2><span class="badge">QUICKSTART</span> Test It on Your PC in 3 Minutes (Zero Cloud Needed)</h2>
+  <p>You can test the entire system right now on your computer with <strong>3 PowerShell windows</strong>:</p>
+
+  <div class="step-card">
+    <h3><span class="step-num">1</span> WINDOW 1 — Start the Backend Server</h3>
+    <p>Open <strong>PowerShell</strong> and paste this exact command:</p>
+    <div class="code-box">
+      <span class="comment"># Navigate to Backend folder and start the server</span><br>
+      <span class="cmd">cd</span> <span class="param">"c:\Users\bhara\Downloads\laptopctl\src\LaptopCtl.Backend"</span><br>
+      <span class="cmd">dotnet</span> run
+    </div>
+    <p><em>Leave this window open!</em> It will say: <code>Now listening on: http://localhost:5000</code>.</p>
+  </div>
+
+  <div class="step-card green">
+    <h3><span class="step-num">2</span> WINDOW 2 — Create Admin Account & Open Web Dashboard</h3>
+    <p>Open a <strong>second PowerShell window</strong> and create your administrator login:</p>
+    <div class="code-box">
+      <span class="comment"># Create an admin account (12+ character password)</span><br>
+      <span class="cmd">$body</span> = @{ email = <span class="highlight">"admin@laptopctl.corp"</span>; password = <span class="highlight">"MasterPassword123!"</span> } | ConvertTo-Json<br>
+      <span class="cmd">Invoke-RestMethod</span> -Uri <span class="param">"http://localhost:5000/api/auth/register"</span> -Method Post -Body $body -ContentType "application/json"
+    </div>
+    <div class="alert-tip">
+      <strong>Visual Dashboard is Ready!</strong> Open your browser and go to: <code>http://localhost:5000</code><br>
+      You will see the live visual dashboard with specs, device list, and interactive terminal!
+    </div>
+  </div>
+
+  <div class="step-card purple">
+    <h3><span class="step-num">3</span> WINDOW 3 — Log in with the CLI Remote Control</h3>
+    <p>Open a <strong>third PowerShell window</strong> to use the <code>laptopctl</code> command-line tool:</p>
+    <div class="code-box">
+      <span class="cmd">cd</span> <span class="param">"c:\Users\bhara\Downloads\laptopctl\src\LaptopCtl.Controller"</span><br>
+      <span class="cmd">dotnet run --</span> login -b <span class="param">"http://localhost:5000"</span> --email <span class="highlight">"admin@laptopctl.corp"</span> --password <span class="highlight">"MasterPassword123!"</span>
+    </div>
+    <p>It will say: <code>[✓] Logged in successfully as admin@laptopctl.corp</code>. Your computer is now ready!</p>
+  </div>
+
+  <div class="footer">
+    <span>LaptopCtl v1.0.0 — Production-Grade Windows Remote Administration</span>
+    <span>https://github.com/laptopctl</span>
+  </div>
+</div>
+
+<!-- ================= PAGE 2: ENROLLING ANY LAPTOP (THE 1-LINER) ================= -->
+<div class="page">
+  <div class="header">
+    <div>
+      <h1>LaptopCtl — Easy Step-by-Step User Guide</h1>
+      <div class="tagline">Enrolling Laptops & Web Dashboard Guide</div>
+    </div>
+    <div class="meta">
+      PAGE 2 OF 3<br>
+      Device Enrollment
+    </div>
+  </div>
+
+  <h2><span class="badge">STEP-BY-STEP</span> How to Connect (Enroll) Any Windows Laptop</h2>
+  <p>To control any laptop (in the other room or across the world), you only need to run <strong>one code command</strong> on that laptop once.</p>
+
+  <div class="step-card">
+    <h3><span class="step-num">1</span> Generate an Enrollment Code from your Controller</h3>
+    <p>In your controller window, ask the server for a new temporary code:</p>
+    <div class="code-box">
+      <span class="cmd">dotnet run --</span> enroll-code -b <span class="param">"http://localhost:5000"</span>
+    </div>
+    <p>The screen will print a box with an 8-character code, like: <code>ABC12345</code>.</p>
+  </div>
+
+  <div class="step-card green">
+    <h3><span class="step-num">2</span> Run the 1-Line Command on the Target Laptop</h3>
+    <p>Walk over to the laptop you want to control (or tell your friend):</p>
+    <ol style="margin-left: 20px; font-size: 8.5pt; margin-bottom: 6px;">
+      <li>Press <strong>Windows Key</strong>, type <strong>PowerShell</strong>, right-click it and choose <strong>"Run as Administrator"</strong>.</li>
+      <li>Copy and paste this single command and press Enter:</li>
+    </ol>
+    <div class="code-box">
+      <span class="cmd">irm</span> <span class="param">"http://YOUR_SERVER_IP:5000/install.ps1"</span> | <span class="cmd">iex</span>; <span class="cmd">Install-LaptopCtl</span> -EnrollmentCode <span class="highlight">"ABC12345"</span> -Backend <span class="param">"http://YOUR_SERVER_IP:5000"</span>
+    </div>
+  </div>
+
+  <div class="step-card purple">
+    <h3><span class="step-num">3</span> What Happens Automatically in 10 Seconds</h3>
+    <table style="margin: 2px 0;">
+      <tr>
+        <th style="width: 25%;">Action</th>
+        <th>What the computer does behind the scenes</th>
+      </tr>
+      <tr>
+        <td><strong>1. Security Lock</strong></td>
+        <td>Creates <code>C:\ProgramData\LaptopCtl</code> and locks it so normal users cannot touch it.</td>
+      </tr>
+      <tr>
+        <td><strong>2. Encryption</strong></td>
+        <td>Generates a unique RSA military-grade encryption key using Windows DPAPI.</td>
+      </tr>
+      <tr>
+        <td><strong>3. Registration</strong></td>
+        <td>Contacts your server, enters code <code>ABC12345</code>, and receives a private device token.</td>
+      </tr>
+      <tr>
+        <td><strong>4. Background Service</strong></td>
+        <td>Registers Windows Service <code>LaptopCtlAgent</code> that starts automatically on every boot.</td>
+      </tr>
+    </table>
+    <div class="alert-tip">
+      <strong>Done!</strong> The laptop is now connected. Even if the laptop restarts or switches Wi-Fi networks, it will automatically reconnect to your server silently!
+    </div>
+  </div>
+
+  <h2><span class="badge">VISUAL UI</span> Using the Modern Web Dashboard</h2>
+  <p>If you prefer clicking buttons instead of typing commands, open <code>http://localhost:5000</code> in your browser:</p>
+  <table>
+    <tr>
+      <th style="width: 30%;">Dashboard Tab</th>
+      <th>What you can do with one click</th>
+    </tr>
+    <tr>
+      <td><strong>Enrolled Devices</strong></td>
+      <td>See all your laptops with green <code>● Online</code> or gray <code>○ Offline</code> status lights and specs.</td>
+    </tr>
+    <tr>
+      <td><strong>Diagnostics & Specs</strong></td>
+      <td>View CPU model, RAM bars, hard drive free space gauges, and running background processes.</td>
+    </tr>
+    <tr>
+      <td><strong>Remote Terminal</strong></td>
+      <td>A black terminal screen in your browser where you can type commands and run them remotely.</td>
+    </tr>
+    <tr>
+      <td><strong>File Explorer</strong></td>
+      <td>Browse files and folders on the remote laptop and click "Download".</td>
+    </tr>
+    <tr>
+      <td><strong>Enroll Computer</strong></td>
+      <td>1-Click button to generate a new enrollment code with a copyable PowerShell snippet.</td>
+    </tr>
+  </table>
+
+  <div class="footer">
+    <span>LaptopCtl v1.0.0 — Production-Grade Windows Remote Administration</span>
+    <span>https://github.com/laptopctl</span>
+  </div>
+</div>
+
+<!-- ================= PAGE 3: COMMAND CHEAT SHEET & DEPLOYMENT ================= -->
+<div class="page">
+  <div class="header">
+    <div>
+      <h1>LaptopCtl — Easy Step-by-Step User Guide</h1>
+      <div class="tagline">Commands Cheat Sheet & Free Cloud Hosting</div>
+    </div>
+    <div class="meta">
+      PAGE 3 OF 3<br>
+      Commands & Cloud
+    </div>
+  </div>
+
+  <h2><span class="badge">REMOTE CONTROL</span> Complete Command Cheat Sheet</h2>
+  <p>Run these from your controller folder (<code>src\LaptopCtl.Controller</code>):</p>
+
+  <table>
+    <tr>
+      <th style="width: 35%;">What you want to do</th>
+      <th>Exact Code Command to Run</th>
+    </tr>
+    <tr>
+      <td><strong>See all your laptops</strong></td>
+      <td><code>dotnet run -- devices</code></td>
+    </tr>
+    <tr>
+      <td><strong>Inspect Laptop Specs (CPU, RAM, OS)</strong></td>
+      <td><code>dotnet run -- info &lt;device-id&gt;</code></td>
+    </tr>
+    <tr>
+      <td><strong>See What Programs Are Running</strong></td>
+      <td><code>dotnet run -- processes &lt;device-id&gt;</code></td>
+    </tr>
+    <tr>
+      <td><strong>Check Hard Drive Free Space</strong></td>
+      <td><code>dotnet run -- disk &lt;device-id&gt;</code></td>
+    </tr>
+    <tr>
+      <td><strong>Check Wi-Fi / IP Addresses</strong></td>
+      <td><code>dotnet run -- network &lt;device-id&gt;</code></td>
+    </tr>
+    <tr>
+      <td><strong>Run ANY Command on That Laptop</strong></td>
+      <td><code>dotnet run -- exec &lt;device-id&gt; "ipconfig"</code><br><code>dotnet run -- exec &lt;device-id&gt; "Get-Service"</code></td>
+    </tr>
+    <tr>
+      <td><strong>Look at Files on the Remote Laptop</strong></td>
+      <td><code>dotnet run -- files list &lt;device-id&gt; "C:\Users\Public"</code></td>
+    </tr>
+    <tr>
+      <td><strong>Send a File to the Remote Laptop</strong></td>
+      <td><code>dotnet run -- files upload &lt;device-id&gt; "local.zip" "C:\Users\Public\local.zip"</code></td>
+    </tr>
+    <tr>
+      <td><strong>Download a File from Remote Laptop</strong></td>
+      <td><code>dotnet run -- files download &lt;device-id&gt; "C:\Users\Public\file.txt" "./file.txt"</code></td>
+    </tr>
+    <tr>
+      <td><strong>Remove / Disconnect a Laptop</strong></td>
+      <td><code>dotnet run -- uninstall &lt;device-id&gt;</code></td>
+    </tr>
+  </table>
+
+  <h2><span class="badge">HOSTING</span> How to Host Online for Free (Control from Anywhere)</h2>
+  <p>To control laptops anywhere in the world when you are not at home, host the server online:</p>
+
+  <div class="step-card green">
+    <h3>Option A: 1-Click Free Hosting on Railway or Render</h3>
+    <ol style="margin-left: 20px; font-size: 8.5pt;">
+      <li>Create a free account at <strong>railway.app</strong> or <strong>render.com</strong>.</li>
+      <li>Click <strong>New Project</strong> ➔ <strong>Deploy from GitHub</strong> (or select Dockerfile).</li>
+      <li>Point it to the <code>deploy/Dockerfile.backend</code> in this project.</li>
+      <li>Add a free PostgreSQL database plugin.</li>
+      <li>Your server is now live at a permanent address like <code>https://my-laptopctl.up.railway.app</code>!</li>
+    </ol>
+  </div>
+
+  <div class="step-card">
+    <h3>Option B: On a $5 Cloud Server (DigitalOcean / AWS / Linode / Hetzner)</h3>
+    <p>On any Linux VPS server with Docker installed, run this single command inside the <code>deploy</code> folder:</p>
+    <div class="code-box">
+      <span class="cmd">docker compose</span> up -d
+    </div>
+    <p>Everything (Postgres, Web Relay, Nginx, Dashboard) starts automatically on ports 80/443!</p>
+  </div>
+
+  <h2><span class="badge">UNINSTALL</span> How to Remove from a Laptop</h2>
+  <p>If you ever want to completely delete the agent from a laptop, open PowerShell as Administrator and run:</p>
+  <div class="code-box">
+    <span class="cmd">&amp;</span> <span class="param">"c:\Users\bhara\Downloads\laptopctl\installer\uninstall.ps1"</span>
+  </div>
+  <p>This stops and removes the background service and wipes all files cleanly.</p>
+
+  <div class="footer">
+    <span>LaptopCtl v1.0.0 — Production-Grade Windows Remote Administration</span>
+    <span>https://github.com/laptopctl</span>
+  </div>
+</div>
+
+</body>
+</html>

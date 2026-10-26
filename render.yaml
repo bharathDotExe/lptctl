@@ -1,0 +1,28 @@
+services:
+  - type: web
+    name: laptopctl-server
+    env: docker
+    dockerfilePath: ./Dockerfile
+    plan: free
+    healthCheckPath: /health
+    envVars:
+      - key: ASPNETCORE_ENVIRONMENT
+        value: Production
+      - key: ConnectionStrings__Postgres
+        fromDatabase:
+          name: laptopctl-db
+          property: connectionString
+      - key: Jwt__Key
+        generateValue: true
+      - key: Jwt__Issuer
+        value: laptopctl-backend
+      - key: Jwt__Audience
+        value: laptopctl-clients
+      - key: Jwt__ExpiryMinutes
+        value: "60"
+
+databases:
+  - name: laptopctl-db
+    plan: free
+    databaseName: laptopctl_prod
+    user: laptopctl_user

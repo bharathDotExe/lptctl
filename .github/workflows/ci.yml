@@ -1,0 +1,55 @@
+name: LaptopCtl CI / CD
+
+on:
+  push:
+    branches: [ main, master ]
+  pull_request:
+    branches: [ main, master ]
+
+jobs:
+  build-and-test:
+    runs-on: windows-latest
+
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+
+    - name: Setup .NET 8 SDK
+      uses: actions/setup-dotnet@v4
+      with:
+        dotnet-version: '8.0.x'
+
+    - name: Restore dependencies
+      run: dotnet restore LaptopCtl.sln
+
+    - name: Build solution
+      run: dotnet build LaptopCtl.sln -c Release --no-restore
+
+    - name: Run unit & integration tests
+      run: dotnet test LaptopCtl.sln -c Release --no-build --verbosity normal
+
+    - name: Publish Agent binary (win-x64)
+      run: |
+        dotnet publish src/LaptopCtl.Agent/LaptopCtl.Agent.csproj `
+          -c Release `
+          -r win-x64 `
+          --self-contained true `
+          -p:PublishSingleFile=true `
+          -o dist/agent
+
+    - name: Publish Controller binary (win-x64)
+      run: |
+        dotnet publish src/LaptopCtl.Controller/LaptopCtl.Controller.csproj `
+          -c Release `
+          -r win-x64 `
+          --self-contained true `
+          -p:PublishSingleFile=true `
+          -o dist/controller
+
+    - name: Upload Build Artifacts
+      uses: actions/upload-artifact@v4
+      with:
+        name: laptopctl-windows-binaries
+        path: |
+          dist/agent/LaptopCtlAgent.exe
+          dist/controller/laptopctl.exe

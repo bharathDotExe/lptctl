@@ -1,0 +1,491 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>LaptopCtl — Windows Remote Administration Platform</title>
+  <meta name="description" content="Production-grade Windows remote administration platform inspired by ADB. Inspect hardware, run diagnostics, transfer files, and manage enrolled machines.">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+  <div id="app" class="app-container">
+    <!-- Top Navigation Bar -->
+    <header class="app-header">
+      <div class="brand">
+        <div class="logo-icon">
+          <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <rect x="2" y="3" width="20" height="14" rx="2" ry="2"></rect>
+            <line x1="8" y1="21" x2="16" y2="21"></line>
+            <line x1="12" y1="17" x2="12" y2="21"></line>
+          </svg>
+        </div>
+        <div>
+          <span class="brand-title">LaptopCtl</span>
+          <span class="brand-badge">CONTROL PANEL</span>
+        </div>
+      </div>
+
+      <div class="header-status">
+        <div class="backend-indicator" id="backend-indicator">
+          <span class="status-dot"></span>
+          <span id="backend-status-text">Backend: Connected</span>
+        </div>
+        <div class="user-profile" id="user-profile">
+          <span class="user-avatar">AD</span>
+          <span class="user-email" id="header-user-email">admin@laptopctl.corp</span>
+          <button class="btn-ghost btn-sm" id="btn-logout" title="Log Out">Log Out</button>
+        </div>
+      </div>
+    </header>
+
+    <!-- Main Sidebar + Content Layout -->
+    <div class="app-body">
+      <aside class="sidebar">
+        <nav class="nav-menu">
+          <button class="nav-item active" data-tab="devices" id="tab-btn-devices">
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <rect x="2" y="3" width="20" height="14" rx="2" ry="2"></rect>
+              <line x1="8" y1="21" x2="16" y2="21"></line>
+              <line x1="12" y1="17" x2="12" y2="21"></line>
+            </svg>
+            <span>Enrolled Devices</span>
+            <span class="counter-badge" id="badge-device-count">0</span>
+          </button>
+
+          <button class="nav-item" data-tab="inspector" id="tab-btn-inspector">
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <circle cx="12" cy="12" r="10"></circle>
+              <line x1="12" y1="16" x2="12" y2="12"></line>
+              <line x1="12" y1="8" x2="12.01" y2="8"></line>
+            </svg>
+            <span>Diagnostics & Specs</span>
+          </button>
+
+          <button class="nav-item" data-tab="terminal" id="tab-btn-terminal">
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <polyline points="4 17 10 11 4 5"></polyline>
+              <line x1="12" y1="19" x2="20" y2="19"></line>
+            </svg>
+            <span>Remote Terminal</span>
+          </button>
+
+          <button class="nav-item" data-tab="files" id="tab-btn-files">
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"></path>
+            </svg>
+            <span>File Explorer</span>
+          </button>
+
+          <button class="nav-item" data-tab="enroll" id="tab-btn-enroll">
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <path d="M16 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"></path>
+              <circle cx="8.5" cy="7.5" r="4"></circle>
+              <line x1="20" y1="8" x2="20" y2="14"></line>
+              <line x1="23" y1="11" x2="17" y2="11"></line>
+            </svg>
+            <span>Enroll Computer</span>
+          </button>
+
+          <button class="nav-item" data-tab="audit" id="tab-btn-audit">
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path>
+              <polyline points="14 2 14 8 20 8"></polyline>
+              <line x1="16" y1="13" x2="8" y2="13"></line>
+              <line x1="16" y1="17" x2="8" y2="17"></line>
+              <polyline points="10 9 9 9 8 9"></polyline>
+            </svg>
+            <span>Audit Trail</span>
+          </button>
+        </nav>
+
+        <div class="sidebar-footer">
+          <div class="version-label">LaptopCtl v1.0.0-prod</div>
+          <div class="security-badge">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <rect x="3" y="11" width="18" height="11" rx="2" ry="2"></rect>
+              <path d="M7 11V7a5 5 0 0 1 10 0v4"></path>
+            </svg>
+            <span>End-to-End TLS / mTLS</span>
+          </div>
+        </div>
+      </aside>
+
+      <!-- Main Dynamic Content Views -->
+      <main class="content-area">
+        <!-- 1. Enrolled Devices Tab -->
+        <section class="tab-pane active" id="pane-devices">
+          <div class="pane-header">
+            <div>
+              <h1 class="pane-title">Enrolled Windows Computers</h1>
+              <p class="pane-subtitle">Real-time status of all managed workstations and laptops.</p>
+            </div>
+            <div class="pane-actions">
+              <button class="btn-primary" id="btn-quick-enroll">
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                  <line x1="12" y1="5" x2="12" y2="19"></line>
+                  <line x1="5" y1="12" x2="19" y2="12"></line>
+                </svg>
+                <span>Enroll New Device</span>
+              </button>
+              <button class="btn-secondary" id="btn-refresh-devices" title="Refresh">
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                  <polyline points="23 4 23 10 17 10"></polyline>
+                  <polyline points="1 20 1 14 7 14"></polyline>
+                  <path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15"></path>
+                </svg>
+              </button>
+            </div>
+          </div>
+
+          <!-- Quick Metrics Bar -->
+          <div class="metrics-grid">
+            <div class="metric-card">
+              <div class="metric-label">TOTAL DEVICES</div>
+              <div class="metric-value" id="stat-total-devices">0</div>
+              <div class="metric-sub">Registered to account</div>
+            </div>
+            <div class="metric-card">
+              <div class="metric-label">ONLINE NOW</div>
+              <div class="metric-value text-green" id="stat-online-devices">0</div>
+              <div class="metric-sub">Heartbeat active (< 30s)</div>
+            </div>
+            <div class="metric-card">
+              <div class="metric-label">ACTIVE SESSIONS</div>
+              <div class="metric-value text-cyan" id="stat-active-sessions">0</div>
+              <div class="metric-sub">Encrypted admin tunnels</div>
+            </div>
+            <div class="metric-card">
+              <div class="metric-label">SECURITY POSTURE</div>
+              <div class="metric-value text-blue">Compliant</div>
+              <div class="metric-sub">DPAPI & ACL Enforced</div>
+            </div>
+          </div>
+
+          <!-- Devices Table Container -->
+          <div class="card table-card">
+            <div class="table-toolbar">
+              <div class="search-box">
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                  <circle cx="11" cy="11" r="8"></circle>
+                  <line x1="21" y1="21" x2="16.65" y2="16.65"></line>
+                </svg>
+                <input type="text" id="device-search-input" placeholder="Search by computer name, device ID, or OS...">
+              </div>
+            </div>
+
+            <div class="table-wrapper">
+              <table class="data-table" id="devices-table">
+                <thead>
+                  <tr>
+                    <th>Status</th>
+                    <th>Computer Name</th>
+                    <th>Device ID</th>
+                    <th>Windows Version</th>
+                    <th>Agent</th>
+                    <th>Last Seen</th>
+                    <th class="text-right">Actions</th>
+                  </tr>
+                </thead>
+                <tbody id="devices-tbody">
+                  <!-- Populated via app.js -->
+                </tbody>
+              </table>
+            </div>
+          </div>
+        </section>
+
+        <!-- 2. Device Inspector / Diagnostics Tab -->
+        <section class="tab-pane" id="pane-inspector">
+          <div class="pane-header">
+            <div>
+              <h1 class="pane-title">Hardware & System Diagnostics</h1>
+              <p class="pane-subtitle" id="inspector-device-subtitle">Inspecting selected workstation</p>
+            </div>
+            <div class="pane-actions">
+              <select class="select-dropdown" id="inspector-device-select">
+                <option value="">Select a device...</option>
+              </select>
+              <button class="btn-primary" id="btn-fetch-diagnostics">
+                <span>Refresh Diagnostics</span>
+              </button>
+            </div>
+          </div>
+
+          <div class="inspector-layout">
+            <!-- Hardware Specs Panel -->
+            <div class="card spec-card">
+              <div class="card-title">Computer Specifications</div>
+              <div class="spec-grid" id="spec-grid-content">
+                <div class="spec-item">
+                  <span class="spec-label">Machine Name</span>
+                  <span class="spec-value" id="spec-computer-name">-</span>
+                </div>
+                <div class="spec-item">
+                  <span class="spec-label">Processor</span>
+                  <span class="spec-value" id="spec-cpu">-</span>
+                </div>
+                <div class="spec-item">
+                  <span class="spec-label">Total RAM</span>
+                  <span class="spec-value" id="spec-ram">-</span>
+                </div>
+                <div class="spec-item">
+                  <span class="spec-label">Operating System</span>
+                  <span class="spec-value" id="spec-os">-</span>
+                </div>
+                <div class="spec-item">
+                  <span class="spec-label">Architecture</span>
+                  <span class="spec-value" id="spec-arch">-</span>
+                </div>
+                <div class="spec-item">
+                  <span class="spec-label">Agent Version</span>
+                  <span class="spec-value" id="spec-agent">-</span>
+                </div>
+              </div>
+            </div>
+
+            <!-- Storage Visualizer -->
+            <div class="card">
+              <div class="card-title">Storage & Disk Capacity</div>
+              <div class="storage-list" id="storage-list-content">
+                <!-- Dynamically rendered -->
+              </div>
+            </div>
+
+            <!-- Network Adapters -->
+            <div class="card">
+              <div class="card-title">Network Interfaces</div>
+              <div class="network-list" id="network-list-content">
+                <!-- Dynamically rendered -->
+              </div>
+            </div>
+
+            <!-- Process Explorer -->
+            <div class="card full-width">
+              <div class="card-title-row">
+                <div class="card-title">Running Processes</div>
+                <input type="text" class="input-sm" id="process-search-input" placeholder="Filter processes...">
+              </div>
+              <div class="table-wrapper max-h-350">
+                <table class="data-table" id="process-table">
+                  <thead>
+                    <tr>
+                      <th>PID</th>
+                      <th>Process Name</th>
+                      <th>Working Set (RAM)</th>
+                      <th>Started</th>
+                      <th>Description</th>
+                    </tr>
+                  </thead>
+                  <tbody id="process-tbody">
+                    <!-- Populated dynamically -->
+                  </tbody>
+                </table>
+              </div>
+            </div>
+          </div>
+        </section>
+
+        <!-- 3. Remote Terminal Tab -->
+        <section class="tab-pane" id="pane-terminal">
+          <div class="pane-header">
+            <div>
+              <h1 class="pane-title">Remote Administration Console</h1>
+              <p class="pane-subtitle">Execute approved administrative commands securely over encrypted relay tunnel.</p>
+            </div>
+            <div class="pane-actions">
+              <select class="select-dropdown" id="terminal-device-select">
+                <option value="">Select target computer...</option>
+              </select>
+            </div>
+          </div>
+
+          <div class="terminal-container">
+            <div class="terminal-header">
+              <div class="terminal-dots">
+                <span class="dot red"></span>
+                <span class="dot yellow"></span>
+                <span class="dot green"></span>
+              </div>
+              <span class="terminal-title" id="terminal-title">PowerShell Remote Administration Session</span>
+              <button class="btn-ghost btn-sm" id="btn-clear-terminal">Clear Console</button>
+            </div>
+            <div class="terminal-screen" id="terminal-output">
+              <div class="terminal-line text-cyan">LaptopCtl Interactive Remote Terminal [Version 1.0.0]</div>
+              <div class="terminal-line text-grey">All commands execute under target Windows Service context (NT AUTHORITY\SYSTEM).</div>
+              <div class="terminal-line text-grey">Select an enrolled target device above and type administrative commands below.</div>
+              <div class="terminal-line text-grey">Type 'help', 'ipconfig', 'Get-Service', or any PowerShell expression.</div>
+              <br>
+            </div>
+            <form class="terminal-input-bar" id="terminal-form">
+              <span class="terminal-prompt">PS&gt;</span>
+              <input type="text" id="terminal-input" placeholder="Enter administrative command..." autocomplete="off">
+              <button type="submit" class="btn-primary" id="btn-terminal-send">Execute</button>
+            </form>
+          </div>
+        </section>
+
+        <!-- 4. File Explorer Tab -->
+        <section class="tab-pane" id="pane-files">
+          <div class="pane-header">
+            <div>
+              <h1 class="pane-title">Authorized File Manager</h1>
+              <p class="pane-subtitle">Inspect directory contents and transfer files with cryptographic integrity checks.</p>
+            </div>
+            <div class="pane-actions">
+              <select class="select-dropdown" id="files-device-select">
+                <option value="">Select computer...</option>
+              </select>
+            </div>
+          </div>
+
+          <div class="card">
+            <!-- Path Navigation Bar -->
+            <div class="path-bar">
+              <button class="btn-secondary btn-sm" id="btn-path-up" title="Up one folder">
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                  <polyline points="18 15 12 9 6 15"></polyline>
+                </svg>
+              </button>
+              <input type="text" class="path-input" id="files-current-path" value="C:\Users">
+              <button class="btn-primary btn-sm" id="btn-path-go">Go</button>
+            </div>
+
+            <!-- Files Table -->
+            <div class="table-wrapper max-h-450">
+              <table class="data-table">
+                <thead>
+                  <tr>
+                    <th>Name</th>
+                    <th>Type</th>
+                    <th>Size</th>
+                    <th>Last Modified</th>
+                    <th class="text-right">Actions</th>
+                  </tr>
+                </thead>
+                <tbody id="files-tbody">
+                  <!-- Rendered dynamically -->
+                </tbody>
+              </table>
+            </div>
+          </div>
+        </section>
+
+        <!-- 5. Enroll Computer Tab -->
+        <section class="tab-pane" id="pane-enroll">
+          <div class="pane-header">
+            <div>
+              <h1 class="pane-title">Enroll a Target Computer</h1>
+              <p class="pane-subtitle">Generate a secure enrollment token and run the 1-liner installer on the target PC.</p>
+            </div>
+          </div>
+
+          <div class="enrollment-wizard">
+            <div class="card wizard-step-card">
+              <div class="step-num">1</div>
+              <div class="step-body">
+                <h3>Generate One-Time Enrollment Code</h3>
+                <p>Generates an 8-character cryptographic enrollment code that authorizes a single computer to bind to your LaptopCtl account.</p>
+                <button class="btn-primary" id="btn-generate-code">
+                  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                    <rect x="3" y="11" width="18" height="11" rx="2" ry="2"></rect>
+                    <path d="M7 11V7a5 5 0 0 1 10 0v4"></path>
+                  </svg>
+                  <span>Generate Enrollment Code</span>
+                </button>
+
+                <div class="code-result-box" id="code-result-box" style="display: none;">
+                  <div class="code-display">
+                    <span class="code-label">CODE:</span>
+                    <span class="code-digits" id="enroll-code-text">--------</span>
+                    <span class="code-timer" id="enroll-code-timer">Expires in 15:00</span>
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            <div class="card wizard-step-card">
+              <div class="step-num">2</div>
+              <div class="step-body">
+                <h3>Run PowerShell Command on Target PC</h3>
+                <p>On the target Windows laptop or workstation, open PowerShell as <strong>Administrator</strong> and execute this command:</p>
+
+                <div class="code-snippet-box">
+                  <pre id="enroll-command-preview">irm https://api.laptopctl.example.com/install.ps1 | iex</pre>
+                  <button class="btn-secondary btn-sm copy-btn" id="btn-copy-command">
+                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                      <rect x="9" y="9" width="13" height="13" rx="2" ry="2"></rect>
+                      <path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path>
+                    </svg>
+                    <span>Copy Command</span>
+                  </button>
+                </div>
+
+                <div class="wizard-notes">
+                  <div class="note-item">
+                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                      <polyline points="20 6 9 17 4 12"></polyline>
+                    </svg>
+                    <span>Automatically registers and starts the <code>LaptopCtlAgent</code> Windows background service.</span>
+                  </div>
+                  <div class="note-item">
+                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                      <polyline points="20 6 9 17 4 12"></polyline>
+                    </svg>
+                    <span>Generates machine-bound RSA key pair protected by Windows DPAPI.</span>
+                  </div>
+                  <div class="note-item">
+                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                      <polyline points="20 6 9 17 4 12"></polyline>
+                    </svg>
+                    <span>No open inbound firewall ports required — connects outbound to central relay.</span>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+        </section>
+
+        <!-- 6. Audit Trail Tab -->
+        <section class="tab-pane" id="pane-audit">
+          <div class="pane-header">
+            <div>
+              <h1 class="pane-title">Immutable Audit Trail</h1>
+              <p class="pane-subtitle">Security log of all administrative actions, enrollments, sessions, and commands.</p>
+            </div>
+            <div class="pane-actions">
+              <button class="btn-secondary" id="btn-refresh-audit">
+                <span>Refresh Audit Log</span>
+              </button>
+            </div>
+          </div>
+
+          <div class="card table-card">
+            <div class="table-wrapper">
+              <table class="data-table" id="audit-table">
+                <thead>
+                  <tr>
+                    <th>Timestamp</th>
+                    <th>Event Type</th>
+                    <th>Target Device</th>
+                    <th>Status</th>
+                    <th>IP Address</th>
+                    <th>Details</th>
+                  </tr>
+                </thead>
+                <tbody id="audit-tbody">
+                  <!-- Populated dynamically -->
+                </tbody>
+              </table>
+            </div>
+          </div>
+        </section>
+      </main>
+    </div>
+  </div>
+
+  <script src="app.js"></script>
+</body>
+</html>
