@@ -22,6 +22,7 @@ public sealed class AgentWorker : BackgroundService
 
     private static readonly TimeSpan ReconnectDelay = TimeSpan.FromSeconds(15);
     private static readonly TimeSpan PingInterval   = TimeSpan.FromSeconds(30);
+    private string _currentWorkingDirectory = @"C:\";
 
     public AgentWorker(
         ILogger<AgentWorker> log,
@@ -267,6 +268,16 @@ public sealed class AgentWorker : BackgroundService
             return;
         }
 
+        string workingDir = !string.IsNullOrWhiteSpace(req.WorkingDirectory) && Directory.Exists(req.WorkingDirectory)
+            ? req.WorkingDirectory
+            : _currentWorkingDirectory;
+
+        if (!Directory.Exists(workingDir))
+        {
+            workingDir = @"C:\";
+        }
+        _currentWorkingDirectory = workingDir;
+
         // Check if command is an interactive request (open YouTube, open folder, launch GUI app)
         if (InteractiveLauncher.IsInteractiveCommand(req.Command, out var interactiveTarget))
         {
@@ -283,6 +294,7 @@ public sealed class AgentWorker : BackgroundService
                     ExitCode = ok ? 0 : 1,
                     Stdout = launchOutput,
                     Stderr = ok ? string.Empty : launchOutput,
+                    WorkingDirectory = _currentWorkingDirectory,
                     Duration = swInter.Elapsed
                 }
             }, ct);
@@ -293,12 +305,26 @@ public sealed class AgentWorker : BackgroundService
         var timeout = TimeSpan.FromSeconds(Math.Clamp(req.TimeoutSeconds, 1, 300));
 
         string rawCommand = req.Command + (string.IsNullOrEmpty(req.Arguments) ? "" : " " + req.Arguments);
-        string commandToRun = "$ProgressPreference = 'SilentlyContinue'; " + rawCommand;
-        string encodedCommand = Convert.ToBase64String(Encoding.Unicode.GetBytes(commandToRun));
+        // Translate bare "cd" to "Get-Location" so it outputs current directory like in cmd/powershell
+        if (rawCommand.Trim().Equals("cd", StringComparison.OrdinalIgnoreCase))
+        {
+            rawCommand = "Get-Location";
+        }
+
+        string escapedDir = workingDir.Replace("'", "''");
+        string script = "$ProgressPreference = 'SilentlyContinue';\n" +
+                        $"try {{ Set-Location -LiteralPath '{escapedDir}' }} catch {{ }}\n" +
+                        rawCommand + "\n" +
+                        "[Console]::Out.Flush()\n" +
+                        "$__pwd = (Get-Location).Path\n" +
+                        "Write-Host \"`n__LPT_PWD::$__pwd\"\n";
+
+        string encodedCommand = Convert.ToBase64String(Encoding.Unicode.GetBytes(script));
         var psi = new ProcessStartInfo
         {
             FileName = "powershell.exe",
             Arguments = $"-NoProfile -NonInteractive -ExecutionPolicy Bypass -EncodedCommand {encodedCommand}",
+            WorkingDirectory = workingDir,
             RedirectStandardOutput = true,
             RedirectStandardError = true,
             UseShellExecute = false,
@@ -324,6 +350,19 @@ public sealed class AgentWorker : BackgroundService
             await proc.WaitForExitAsync(cts.Token);
             sw.Stop();
 
+            string stdout = stdoutBuilder.ToString().TrimEnd();
+            const string pwdMarker = "__LPT_PWD::";
+            int markerIdx = stdout.LastIndexOf(pwdMarker, StringComparison.Ordinal);
+            if (markerIdx >= 0)
+            {
+                string pwdCandidate = stdout.Substring(markerIdx + pwdMarker.Length).Trim();
+                if (!string.IsNullOrWhiteSpace(pwdCandidate) && Directory.Exists(pwdCandidate))
+                {
+                    _currentWorkingDirectory = pwdCandidate;
+                }
+                stdout = stdout.Substring(0, markerIdx).TrimEnd();
+            }
+
             await _backend.SendAsync(new WsMessage
             {
                 Type = WsMessageTypes.CommandResult,
@@ -331,8 +370,9 @@ public sealed class AgentWorker : BackgroundService
                 Payload = new CommandExecutionResult
                 {
                     ExitCode = proc.ExitCode,
-                    Stdout = stdoutBuilder.ToString().TrimEnd(),
+                    Stdout = stdout,
                     Stderr = stderrBuilder.ToString().TrimEnd(),
+                    WorkingDirectory = _currentWorkingDirectory,
                     Duration = sw.Elapsed
                 }
             }, ct);

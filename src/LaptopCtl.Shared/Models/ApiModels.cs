@@ -111,6 +111,7 @@ public record CommandExecutionRequest
 {
     public string Command { get; init; } = string.Empty;
     public string? Arguments { get; init; }
+    public string? WorkingDirectory { get; init; }
     public int TimeoutSeconds { get; init; } = 30;
 }
 
@@ -119,6 +120,7 @@ public record CommandExecutionResult
     public int ExitCode { get; init; }
     public string Stdout { get; init; } = string.Empty;
     public string Stderr { get; init; } = string.Empty;
+    public string WorkingDirectory { get; init; } = string.Empty;
     public TimeSpan Duration { get; init; }
 }
 

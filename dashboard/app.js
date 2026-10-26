@@ -21,6 +21,7 @@ const state = {
   activeTab: 'devices',
   devices: [],
   selectedDeviceId: null,
+  currentDirectory: 'C:\\',
   jwtToken: sessionStorage.getItem('laptopctl_token'),
   currentUser: { email: sessionStorage.getItem('laptopctl_user_email') || '' },
   mockMode: false,
@@ -566,7 +567,8 @@ async function handleTerminalCommand(e) {
   if (!cmd) return;
 
   input.value = '';
-  appendTerminalLine(`PS> ${cmd}`, 'text-primary');
+  const currentPrompt = state.currentDirectory ? `PS ${state.currentDirectory}> ` : 'PS> ';
+  appendTerminalLine(`${currentPrompt}${cmd}`, 'text-primary');
 
   if (!state.jwtToken) {
     appendTerminalLine('Error: Not authenticated. Please sign in as Administrator first.', 'text-red');
@@ -586,7 +588,7 @@ async function handleTerminalCommand(e) {
 
   // Handle local terminal helper commands
   if (cmd.toLowerCase() === 'help') {
-    appendTerminalLine('Supported commands:\n  ipconfig, Get-Service, Get-Process, systeminfo, tasklist\n  open <url> or open <path> (e.g. open https://youtube.com or open C:\\)\n  All valid PowerShell expressions are evaluated under target SYSTEM context.', 'text-secondary');
+    appendTerminalLine('Supported commands:\n  cd <path> (e.g. cd C:\\Users, cd ..)\n  pwd or Get-Location (prints current directory)\n  dir, mkdir <folder>, rmdir <folder>\n  open <url> or open <path> (e.g. open https://youtube.com)\n  All PowerShell commands execute statefully in the current working directory.', 'text-secondary');
     return;
   }
 
@@ -595,7 +597,7 @@ async function handleTerminalCommand(e) {
     return;
   }
 
-  appendTerminalLine(`Executing '${cmd}' on remote target [${state.selectedDeviceId}]...`, 'text-muted');
+  appendTerminalLine(`Executing '${cmd}' in [${state.currentDirectory || 'C:\\'}]...`, 'text-muted');
 
   try {
     const res = await fetch(`${API_BASE}/api/devices/${state.selectedDeviceId}/exec`, {
@@ -604,11 +606,20 @@ async function handleTerminalCommand(e) {
         'Content-Type': 'application/json',
         'Authorization': `Bearer ${state.jwtToken}`
       },
-      body: JSON.stringify({ command: cmd, timeoutSeconds: 45 })
+      body: JSON.stringify({
+        command: cmd,
+        workingDirectory: state.currentDirectory || 'C:\\',
+        timeoutSeconds: 45
+      })
     });
 
     if (res.ok) {
       const result = await res.json();
+      if (result.workingDirectory) {
+        state.currentDirectory = result.workingDirectory;
+        const promptLabel = document.getElementById('terminal-prompt-label');
+        if (promptLabel) promptLabel.textContent = `PS ${result.workingDirectory}>`;
+      }
       if (result.stdout) appendTerminalLine(result.stdout, 'text-green');
       if (result.stderr) {
         const cleanErr = formatTerminalOutput(result.stderr);
