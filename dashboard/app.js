@@ -610,7 +610,10 @@ async function handleTerminalCommand(e) {
     if (res.ok) {
       const result = await res.json();
       if (result.stdout) appendTerminalLine(result.stdout, 'text-green');
-      if (result.stderr) appendTerminalLine(result.stderr, 'text-red');
+      if (result.stderr) {
+        const cleanErr = formatTerminalOutput(result.stderr);
+        if (cleanErr) appendTerminalLine(cleanErr, 'text-red');
+      }
       if (!result.stdout && !result.stderr) appendTerminalLine('(Command completed with no output)', 'text-muted');
       appendTerminalLine(`[Process completed with exit code ${result.exitCode}]`, 'text-muted');
       return;
@@ -633,6 +636,22 @@ async function handleTerminalCommand(e) {
   } catch (err) {
     appendTerminalLine(`Network Error: ${err.message}`, 'text-red');
   }
+}
+
+function formatTerminalOutput(text) {
+  if (!text) return '';
+  if (text.includes('#< CLIXML')) {
+    const errorMatches = text.match(/<S S="Error">([\s\S]*?)<\/S>/g);
+    if (errorMatches && errorMatches.length > 0) {
+      return errorMatches
+        .map(m => m.replace(/<S S="Error">/, '').replace(/<\/S>/, ''))
+        .join('')
+        .replace(/_x000D__x000A_/g, '\n')
+        .replace(/_x001B_\[[0-9;]*m/g, '')
+        .trim();
+    }
+  }
+  return text;
 }
 
 function appendTerminalLine(text, className = '') {
