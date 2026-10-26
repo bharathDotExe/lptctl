@@ -75,13 +75,15 @@ public sealed class DeviceService
         return true;
     }
 
-    public async Task UpdateHeartbeatAsync(string deviceId, string agentVersion, CancellationToken ct = default)
+    public async Task UpdateHeartbeatAsync(string deviceId, string agentVersion, string? deviceName = null, string? osVersion = null, CancellationToken ct = default)
     {
         var device = await _db.Devices.FirstOrDefaultAsync(d => d.DeviceId == deviceId, ct);
         if (device is null) return;
         device.LastSeen     = DateTimeOffset.UtcNow;
         device.IsOnline     = true;
         device.AgentVersion = agentVersion;
+        if (!string.IsNullOrWhiteSpace(deviceName)) device.DeviceName = deviceName;
+        if (!string.IsNullOrWhiteSpace(osVersion)) device.OsVersion = osVersion;
         await _db.SaveChangesAsync(ct);
     }
 
@@ -95,14 +97,37 @@ public sealed class DeviceService
 
     /// <summary>Validates a device token. Returns the device's owner ID if valid.</summary>
     public async Task<(bool Valid, int OwnerId)> ValidateDeviceTokenAsync(
-        string deviceId, string rawToken, CancellationToken ct = default)
+        string deviceId, string rawToken, string? deviceName = null, string? osVersion = null, CancellationToken ct = default)
     {
         var device = await _db.Devices
             .FirstOrDefaultAsync(d =>
                 d.DeviceId == deviceId &&
                 d.EnrollmentStatus == "Active", ct);
 
-        if (device is null) return (false, 0);
+        if (device is null)
+        {
+            // Auto-heal: If database was restarted or reset, auto-register connecting agent for admin
+            var admin = await _db.Users.FirstOrDefaultAsync(ct);
+            var ownerId = admin?.Id ?? 1;
+
+            var tokenHash = BCrypt.Net.BCrypt.HashPassword(rawToken, workFactor: 10);
+            device = new DeviceEntity
+            {
+                DeviceId         = deviceId,
+                DeviceName       = !string.IsNullOrWhiteSpace(deviceName) ? deviceName : "Remote Computer",
+                OwnerId          = ownerId,
+                DeviceTokenHash  = tokenHash,
+                OsVersion        = osVersion ?? "Windows",
+                EnrollmentStatus = "Active",
+                IsOnline         = true,
+                LastSeen         = DateTimeOffset.UtcNow,
+                EnrolledAt       = DateTimeOffset.UtcNow
+            };
+            _db.Devices.Add(device);
+            await _db.SaveChangesAsync(ct);
+            _log.LogInformation("Auto-healed device record {DeviceId} ({Name}) for user {UserId}", deviceId, device.DeviceName, ownerId);
+            return (true, ownerId);
+        }
 
         bool valid = BCrypt.Net.BCrypt.Verify(rawToken, device.DeviceTokenHash);
         return (valid, device.OwnerId);

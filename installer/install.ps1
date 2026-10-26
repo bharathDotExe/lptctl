@@ -61,32 +61,6 @@ function Install-LaptopCtl {
     $AgentExe   = Join-Path $InstallDir "LaptopCtlAgent.exe"
     $IdentityFile = Join-Path $DataDir "identity.json"
     $ServiceName = "LaptopCtlAgent"
-    # Check if machine is already enrolled
-    if (-not $Force) {
-        $existingFile = if (Test-Path $IdentityFile) { $IdentityFile } elseif (Test-Path (Join-Path $InstallDir "identity.json")) { Join-Path $InstallDir "identity.json" } else { $null }
-        if ($existingFile) {
-            try {
-                $existingId = Get-Content $existingFile -Raw | ConvertFrom-Json
-                if ($existingId.IsEnrolled -and $existingId.DeviceId) {
-                    Write-Host ""
-                    Write-Host " ====================================================== " -ForegroundColor Green
-                    Write-Host "   NOTE: This machine is ALREADY enrolled with ID:      " -ForegroundColor Green
-                    Write-Host "   $($existingId.DeviceId)" -ForegroundColor White -BackgroundColor DarkGreen
-                    Write-Host " ====================================================== " -ForegroundColor Green
-                    $svc = Get-Service -Name $ServiceName -ErrorAction SilentlyContinue
-                    if ($svc) {
-                        if ($svc.Status -ne "Running") {
-                            Start-Service -Name $ServiceName -ErrorAction SilentlyContinue
-                        }
-                        Write-Host "   Service $ServiceName is installed and $($svc.Status)." -ForegroundColor Green
-                    }
-                    Write-Host "   Check your web dashboard at $Backend to manage this PC." -ForegroundColor Cyan
-                    Write-Host "   (To force a clean re-enrollment, add -Force to the installer command)." -ForegroundColor DarkGray
-                    return
-                }
-            } catch { }
-        }
-    }
 
     Write-Host "[1/6] Creating secure directories..." -ForegroundColor Yellow
     [System.IO.Directory]::CreateDirectory($InstallDir) | Out-Null

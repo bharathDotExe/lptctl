@@ -58,10 +58,14 @@ public sealed class AgentConnectionManager
         }
 
         var rawToken = authHeader["Device ".Length..].Trim();
+        var agentVersion = ctx.Request.Headers["X-Agent-Version"].FirstOrDefault() ?? "1.0.0";
+        var deviceName   = ctx.Request.Headers["X-Device-Name"].FirstOrDefault();
+        var osVersion    = ctx.Request.Headers["X-OS-Version"].FirstOrDefault();
+
         using var scope = _services.CreateScope();
         var deviceSvc   = scope.ServiceProvider.GetRequiredService<DeviceService>();
 
-        var (valid, ownerId) = await deviceSvc.ValidateDeviceTokenAsync(deviceId, rawToken);
+        var (valid, ownerId) = await deviceSvc.ValidateDeviceTokenAsync(deviceId, rawToken, deviceName, osVersion);
         if (!valid)
         {
             _log.LogWarning("Invalid device token for {DeviceId}", deviceId);
@@ -69,12 +73,11 @@ public sealed class AgentConnectionManager
             return;
         }
 
-        var agentVersion = ctx.Request.Headers["X-Agent-Version"].FirstOrDefault() ?? "unknown";
         var conn = new AgentConnection(deviceId, ws, _log);
         _connections[deviceId] = conn;
 
-        await deviceSvc.UpdateHeartbeatAsync(deviceId, agentVersion);
-        _log.LogInformation("Agent connected: {DeviceId}", deviceId);
+        await deviceSvc.UpdateHeartbeatAsync(deviceId, agentVersion, deviceName, osVersion);
+        _log.LogInformation("Agent connected: {DeviceId} ({Name})", deviceId, deviceName ?? "Device");
 
         try
         {

@@ -97,6 +97,8 @@ public sealed class BackendClient : IDisposable
         _ws = new ClientWebSocket();
         _ws.Options.SetRequestHeader("Authorization", $"Device {deviceToken}");
         _ws.Options.SetRequestHeader("X-Agent-Version", AgentVersion.Current);
+        _ws.Options.SetRequestHeader("X-Device-Name", Environment.MachineName);
+        _ws.Options.SetRequestHeader("X-OS-Version", Environment.OSVersion.ToString());
 
         await _ws.ConnectAsync(new Uri(wsUrl), ct);
         _log.LogInformation("WebSocket connected");
