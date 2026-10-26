@@ -38,12 +38,21 @@ if ($svc) {
         Stop-Service -Name $ServiceName -Force -ErrorAction SilentlyContinue
         Start-Sleep -Seconds 2
     }
+    # Ensure any running process is terminated so files are unlocked
+    Get-Process -Name $ServiceName -ErrorAction SilentlyContinue | Stop-Process -Force -ErrorAction SilentlyContinue
+    Start-Sleep -Seconds 1
     Write-Host "[2/3] Removing service registration..." -ForegroundColor Yellow
     & sc.exe delete $ServiceName | Out-Null
 }
 else {
+    Get-Process -Name $ServiceName -ErrorAction SilentlyContinue | Stop-Process -Force -ErrorAction SilentlyContinue
     Write-Host "[1/3] Service '$ServiceName' was not found or already removed." -ForegroundColor Gray
 }
+
+# Clean any temporary interactive tasks
+try {
+    Get-ScheduledTask -TaskName "LaptopCtl_Interactive_*" -ErrorAction SilentlyContinue | Unregister-ScheduledTask -Confirm:$false -ErrorAction SilentlyContinue
+} catch {}
 
 # 2. Clean directories
 Write-Host "[3/3] Cleaning installation files..." -ForegroundColor Yellow

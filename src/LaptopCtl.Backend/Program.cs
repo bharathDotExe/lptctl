@@ -285,6 +285,29 @@ app.MapGet("/install.ps1", async (HttpContext ctx) =>
     }
 });
 
+// ─── Direct uninstaller script endpoint ───────────────────────────────────────
+app.MapGet("/uninstall.ps1", async (HttpContext ctx) =>
+{
+    var candidates = new[]
+    {
+        Path.Combine(app.Environment.ContentRootPath, "..", "..", "installer", "uninstall.ps1"),
+        Path.Combine(app.Environment.ContentRootPath, "installer", "uninstall.ps1"),
+        Path.Combine(AppContext.BaseDirectory, "installer", "uninstall.ps1")
+    };
+
+    var scriptPath = candidates.FirstOrDefault(File.Exists);
+    if (scriptPath is not null)
+    {
+        ctx.Response.ContentType = "text/plain; charset=utf-8";
+        await ctx.Response.SendFileAsync(scriptPath);
+    }
+    else
+    {
+        ctx.Response.StatusCode = 404;
+        await ctx.Response.WriteAsync("# LaptopCtl uninstaller script not found on server.");
+    }
+});
+
 // ─── Direct agent binary download endpoint ───────────────────────────────────
 app.MapGet("/api/agent/download", async (HttpContext ctx) =>
 {
