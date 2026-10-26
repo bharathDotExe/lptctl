@@ -62,7 +62,12 @@ var jwtKey = jwtSection["Key"];
 if (string.IsNullOrWhiteSpace(jwtKey) || jwtKey.Contains("REPLACE_WITH") || Encoding.UTF8.GetByteCount(jwtKey) < 32)
 {
     jwtKey = "LaptopCtlDefaultSecureProductionSigningSecretKey2026!#*";
+    builder.Configuration["Jwt:Key"] = jwtKey;
 }
+var issuer   = jwtSection["Issuer"] ?? "laptopctl-backend";
+var audience = jwtSection["Audience"] ?? "laptopctl-clients";
+builder.Configuration["Jwt:Issuer"]   = issuer;
+builder.Configuration["Jwt:Audience"] = audience;
 
 var keyBytes = Encoding.UTF8.GetBytes(jwtKey);
 
@@ -75,8 +80,8 @@ builder.Services.AddAuthentication(JwtBearerDefaults.AuthenticationScheme)
             ValidateAudience         = true,
             ValidateLifetime         = true,
             ValidateIssuerSigningKey = true,
-            ValidIssuer              = jwtSection["Issuer"],
-            ValidAudience            = jwtSection["Audience"],
+            ValidIssuer              = issuer,
+            ValidAudience            = audience,
             IssuerSigningKey         = new SymmetricSecurityKey(keyBytes),
             ClockSkew                = TimeSpan.FromSeconds(30)
         };

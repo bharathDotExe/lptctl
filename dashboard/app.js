@@ -663,27 +663,45 @@ window.downloadFile = function(fileName) {
 // Enrollment Code Generation
 async function generateEnrollmentCode() {
   if (!state.jwtToken) {
-    openAuthModal('Please sign in or create an admin account to generate an enrollment code.');
+    await autoAdminLogin();
+  }
+
+  if (!state.jwtToken) {
+    openAuthModal('Please sign in as Administrator to generate an enrollment code.');
     return;
   }
 
   let code = 'LPT-' + Math.random().toString(36).substring(2, 6).toUpperCase();
 
   try {
-    const res = await fetch(`${API_BASE}/api/enrollment/code`, {
+    let res = await fetch(`${API_BASE}/api/enrollment/code`, {
       method: 'POST',
       headers: { 'Authorization': `Bearer ${state.jwtToken}` }
     });
+
+    if (res.status === 401) {
+      // Token may be stale; re-authenticate and retry
+      await autoAdminLogin();
+      res = await fetch(`${API_BASE}/api/enrollment/code`, {
+        method: 'POST',
+        headers: { 'Authorization': `Bearer ${state.jwtToken}` }
+      });
+    }
+
     if (res.ok) {
       const data = await res.json();
       code = data.code;
     } else {
-      const err = await res.json();
-      alert(err.message || 'Failed to generate code.');
+      let errMsg = `Server returned status ${res.status}`;
+      try {
+        const err = await res.json();
+        errMsg = err.message || errMsg;
+      } catch {}
+      alert(`Error generating code: ${errMsg}`);
       return;
     }
   } catch (err) {
-    alert('Failed to connect to backend.');
+    alert('Failed to connect to backend: ' + err.message);
     return;
   }
 

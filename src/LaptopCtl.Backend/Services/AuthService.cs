@@ -119,9 +119,13 @@ public sealed class AuthService
     private async Task<((string Token, DateTimeOffset ExpiresAt) Access, string Refresh)>
         GenerateTokensAsync(UserEntity user, CancellationToken ct)
     {
-        var jwtKey    = _config["Jwt:Key"]!;
-        var issuer    = _config["Jwt:Issuer"]!;
-        var audience  = _config["Jwt:Audience"]!;
+        var jwtKey = _config["Jwt:Key"];
+        if (string.IsNullOrWhiteSpace(jwtKey) || jwtKey.Contains("REPLACE_WITH") || Encoding.UTF8.GetByteCount(jwtKey) < 32)
+        {
+            jwtKey = "LaptopCtlDefaultSecureProductionSigningSecretKey2026!#*";
+        }
+        var issuer    = _config["Jwt:Issuer"] ?? "laptopctl-backend";
+        var audience  = _config["Jwt:Audience"] ?? "laptopctl-clients";
         var expMins   = int.Parse(_config["Jwt:ExpiryMinutes"] ?? "60");
         var expiresAt = DateTimeOffset.UtcNow.AddMinutes(expMins);
 
