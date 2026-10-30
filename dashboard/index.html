@@ -7,14 +7,10 @@
   <meta name="description" content="Production-grade Windows remote administration platform inspired by ADB. Inspect hardware, run diagnostics, transfer files, and manage enrolled machines.">
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-  <link href="https://fonts.googleapis.com/css2?family=Fira+Code:wght@300;400;500;600;700&family=Inter:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;500;600;700&family=Orbitron:wght@400;600;700;800;900&family=Share+Tech+Mono&display=swap" rel="stylesheet">
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
   <link rel="stylesheet" href="styles.css">
 </head>
 <body>
-  <!-- Cyberpunk Matrix & Scanline Overlays -->
-  <div class="cyber-scanline" aria-hidden="true"></div>
-  <canvas id="matrix-canvas" class="cyber-matrix-bg" aria-hidden="true"></canvas>
-
   <div id="app" class="app-container">
     <!-- Top Navigation Bar -->
     <header class="app-header">
@@ -28,14 +24,14 @@
         </div>
         <div>
           <span class="brand-title">LaptopCtl</span>
-          <span class="brand-badge">CONTROL PANEL</span>
+          <span class="brand-badge">OPS CONSOLE</span>
         </div>
       </div>
 
       <div class="header-status">
         <div class="backend-indicator" id="backend-indicator">
           <span class="status-dot"></span>
-          <span id="backend-status-text">Backend: Connected</span>
+          <span id="backend-status-text">BACKEND: CONNECTED</span>
         </div>
         <div class="user-profile" id="user-profile" style="display: none;">
           <span class="user-avatar" id="header-avatar">AD</span>
@@ -56,7 +52,7 @@
               <line x1="8" y1="21" x2="16" y2="21"></line>
               <line x1="12" y1="17" x2="12" y2="21"></line>
             </svg>
-            <span>Enrolled Devices</span>
+            <span>OVERVIEW / DEVICES</span>
             <span class="counter-badge" id="badge-device-count">0</span>
           </button>
 
@@ -66,7 +62,7 @@
               <line x1="12" y1="16" x2="12" y2="12"></line>
               <line x1="12" y1="8" x2="12.01" y2="8"></line>
             </svg>
-            <span>Diagnostics & Specs</span>
+            <span>SYSTEM INFO</span>
           </button>
 
           <button class="nav-item" data-tab="terminal" id="tab-btn-terminal">
@@ -74,14 +70,14 @@
               <polyline points="4 17 10 11 4 5"></polyline>
               <line x1="12" y1="19" x2="20" y2="19"></line>
             </svg>
-            <span>Remote Terminal</span>
+            <span>TERMINAL</span>
           </button>
 
           <button class="nav-item" data-tab="files" id="tab-btn-files">
             <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
               <path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"></path>
             </svg>
-            <span>File Explorer</span>
+            <span>FILE MANAGER</span>
           </button>
 
           <button class="nav-item" data-tab="remote-control" id="tab-btn-remote-control">
@@ -97,7 +93,7 @@
               <line x1="18" y1="12" x2="18" y2="12.01"></line>
               <line x1="7" y1="16" x2="17" y2="16"></line>
             </svg>
-            <span>Keyboard & Mouse</span>
+            <span>REMOTE INPUT</span>
           </button>
 
           <button class="nav-item" data-tab="enroll" id="tab-btn-enroll">
@@ -107,7 +103,7 @@
               <line x1="20" y1="8" x2="20" y2="14"></line>
               <line x1="23" y1="11" x2="17" y2="11"></line>
             </svg>
-            <span>Enroll Computer</span>
+            <span>ENROLL AGENT</span>
           </button>
 
           <button class="nav-item" data-tab="audit" id="tab-btn-audit">
@@ -118,18 +114,18 @@
               <line x1="16" y1="17" x2="8" y2="17"></line>
               <polyline points="10 9 9 9 8 9"></polyline>
             </svg>
-            <span>Audit Trail</span>
+            <span>AUDIT LOGS</span>
           </button>
         </nav>
 
         <div class="sidebar-footer">
-          <div class="version-label">LaptopCtl v1.0.0-prod</div>
+          <div class="version-label">LAPTOPCTL // v1.0.0-prod</div>
           <div class="security-badge">
             <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
               <rect x="3" y="11" width="18" height="11" rx="2" ry="2"></rect>
               <path d="M7 11V7a5 5 0 0 1 10 0v4"></path>
             </svg>
-            <span>End-to-End TLS / mTLS</span>
+            <span>SECURE RELAY / WSS</span>
           </div>
         </div>
       </aside>
@@ -162,6 +158,13 @@
           </div>
 
           <!-- Quick Metrics Bar -->
+          <div class="console-status-strip" aria-label="System status">
+            <div class="console-status-item"><span>SYSTEM_STATUS</span><strong id="system-status-value">STANDBY</strong></div>
+            <div class="console-status-item"><span>AGENT_CONNECTION</span><strong id="agent-connection-value">0 ONLINE</strong></div>
+            <div class="console-status-item"><span>ACTIVE_DEVICES</span><strong id="active-devices-value">00</strong></div>
+            <div class="console-status-item"><span>BACKEND_LINK</span><strong id="backend-link-value">CHECKING</strong></div>
+          </div>
+
           <div class="metrics-grid">
             <div class="metric-card">
               <div class="metric-label">TOTAL DEVICES</div>
@@ -176,12 +179,12 @@
             <div class="metric-card">
               <div class="metric-label">ACTIVE SESSIONS</div>
               <div class="metric-value text-cyan" id="stat-active-sessions">0</div>
-              <div class="metric-sub">Encrypted admin tunnels</div>
+              <div class="metric-sub">Reported by backend</div>
             </div>
             <div class="metric-card">
               <div class="metric-label">SECURITY POSTURE</div>
-              <div class="metric-value text-blue">Compliant</div>
-              <div class="metric-sub">DPAPI & ACL Enforced</div>
+              <div class="metric-value text-green">—</div>
+              <div class="metric-sub">Awaiting security telemetry</div>
             </div>
           </div>
 
