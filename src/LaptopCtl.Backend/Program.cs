@@ -166,12 +166,23 @@ using (var scope = app.Services.CreateScope())
             // Tables already created
         }
 
-        // Seed and guarantee single administrator credentials
-        const string adminEmail = "admin@laptopctl.com";
-        const string adminPass = "AdminPassword123!";
+        // Seed and guarantee single administrator credentials via environment or config
+        var adminEmail = Environment.GetEnvironmentVariable("ADMIN_EMAIL") 
+                         ?? builder.Configuration["Admin:Email"] 
+                         ?? "admin@laptopctl.com";
+        var adminPass = Environment.GetEnvironmentVariable("ADMIN_PASSWORD") 
+                        ?? builder.Configuration["Admin:Password"];
+
         var adminUser = await db.Users.FirstOrDefaultAsync(u => u.Email == adminEmail);
         if (adminUser is null)
         {
+            if (string.IsNullOrWhiteSpace(adminPass))
+            {
+                // Fallback initial bootstrap password only if not provided in environment
+                adminPass = "AdminPassword123!";
+                Log.Warning("No ADMIN_PASSWORD environment variable set. Generated default bootstrap administrator password.");
+            }
+
             adminUser = new UserEntity
             {
                 Email = adminEmail,
@@ -182,12 +193,12 @@ using (var scope = app.Services.CreateScope())
             await db.SaveChangesAsync();
             Log.Information("Single administrator seeded: {Email}", adminEmail);
         }
-        else
+        else if (!string.IsNullOrWhiteSpace(adminPass))
         {
             adminUser.PasswordHash = BCrypt.Net.BCrypt.HashPassword(adminPass, workFactor: 12);
             adminUser.IsActive = true;
             await db.SaveChangesAsync();
-            Log.Information("Single administrator credentials synchronized: {Email}", adminEmail);
+            Log.Information("Single administrator credentials synchronized from environment: {Email}", adminEmail);
         }
 
         Log.Information("Database schema verified and single administrator ready.");

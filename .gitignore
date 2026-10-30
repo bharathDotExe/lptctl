@@ -12,3 +12,5 @@
 *.pdb
 scratch/
 installer/appsettings.Development.json
+
+dashboard/app.src.js
