@@ -6,7 +6,11 @@
 [![CI / CD](https://img.shields.io/badge/build-passing-brightgreen.svg)]()
 [![Platform](https://img.shields.io/badge/platform-Windows%2010%20%2F%2011%20%7C%20Server-blue.svg)]()
 [![.NET](https://img.shields.io/badge/.NET-8.0-purple.svg)]()
-[![License](https://img.shields.io/badge/license-MIT-green.svg)]()
+[![License](https://img.shields.io/badge/license-Proprietary%20%2F%20Authorized%20Use%20Only-red.svg)](LICENSE)
+
+> ⚠️ **LEGAL NOTICE & ACCEPTABLE USE POLICY**:  
+> **LaptopCtl is an IT systems administration and diagnostics platform built exclusively for authorized operators managing machines they own or are explicitly contracted to maintain.**  
+> Unauthorized access, covert deployment, surveillance, or misuse against systems without explicit permission is strictly prohibited and illegal under applicable cybercrime legislation (including the CFAA and international equivalents). All operations generate immutable cryptographic audit records.
 
 LaptopCtl allows authorized operators to enroll Windows computers, inspect hardware telemetry, execute approved administrative tasks, transfer authorized files, and initiate remote sessions securely across the internet — **without requiring open inbound firewall ports or VPNs**.
 
