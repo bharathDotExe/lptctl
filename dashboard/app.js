@@ -380,12 +380,15 @@ function closeAuthModal() {
 function updateBackendIndicator(isOnline) {
   const dot = document.querySelector('.status-dot');
   const txt = document.getElementById('backend-status-text');
+  const link = document.getElementById('backend-link-value');
   if (isOnline) {
     dot.style.backgroundColor = 'var(--accent-green)';
-    txt.textContent = 'Backend: Connected (Live)';
+    txt.textContent = 'BACKEND: CONNECTED';
+    if (link) link.textContent = 'CONNECTED';
   } else {
     dot.style.backgroundColor = 'var(--accent-amber)';
-    txt.textContent = 'Backend: Standalone / Preview Mode';
+    txt.textContent = 'BACKEND: UNAVAILABLE';
+    if (link) link.textContent = 'OFFLINE';
   }
 }
 
@@ -394,8 +397,14 @@ function updateMetrics() {
   const online = state.devices.filter(d => d.isOnline).length;
   document.getElementById('stat-total-devices').textContent = total;
   document.getElementById('stat-online-devices').textContent = online;
-  document.getElementById('stat-active-sessions').textContent = online > 0 ? 1 : 0;
+  document.getElementById('stat-active-sessions').textContent = '—';
   document.getElementById('badge-device-count').textContent = total;
+  const systemStatus = document.getElementById('system-status-value');
+  const agentStatus = document.getElementById('agent-connection-value');
+  const activeDevices = document.getElementById('active-devices-value');
+  if (systemStatus) systemStatus.textContent = state.jwtToken ? 'ONLINE' : 'AUTH REQUIRED';
+  if (agentStatus) agentStatus.textContent = `${String(online).padStart(2, '0')} ONLINE`;
+  if (activeDevices) activeDevices.textContent = String(total).padStart(2, '0');
 }
 
 function renderDevicesTable(devices) {
@@ -948,7 +957,7 @@ async function loadAuditLog() {
   const tbody = document.getElementById('audit-tbody');
   tbody.innerHTML = '';
 
-  let events = MOCK_AUDIT;
+  let events = [];
   try {
     const res = await fetch(`${API_BASE}/api/audit`, {
       headers: { 'Authorization': `Bearer ${state.jwtToken}` }
@@ -956,7 +965,14 @@ async function loadAuditLog() {
     if (res.ok) {
       events = await res.json();
     }
-  } catch {}
+  } catch (err) {
+    console.error('Unable to load audit log:', err);
+  }
+
+  if (!Array.isArray(events) || events.length === 0) {
+    tbody.innerHTML = '<tr><td colspan="6" style="text-align:center; padding: 2rem; color: var(--text-muted);">No audit events returned by the backend.</td></tr>';
+    return;
+  }
 
   events.forEach(ev => {
     const tr = document.createElement('tr');
@@ -1139,4 +1155,3 @@ function initRemoteControl() {
     });
   }
 }
-
