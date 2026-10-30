@@ -1140,3 +1140,83 @@ function initRemoteControl() {
   }
 }
 
+/* ==========================================================================
+   Cyberpunk / Hacker Matrix Animation Engine
+   Animates a digital rain canvas in the background with binary/hex glyphs.
+   Non-intrusive, zero DOM displacement, maintains layout precision.
+   ========================================================================== */
+(function initCyberpunkHackerEffects() {
+  const canvas = document.getElementById('matrix-canvas');
+  if (!canvas) return;
+
+  const ctx = canvas.getContext('2d');
+  if (!ctx) return;
+
+  let width = (canvas.width = window.innerWidth);
+  let height = (canvas.height = window.innerHeight);
+
+  window.addEventListener('resize', () => {
+    width = canvas.width = window.innerWidth;
+    height = canvas.height = window.innerHeight;
+  });
+
+  const chars = '01ABCDEFｦｱｳｴｵｶｷｹｺｻｼｽｾｿﾀﾂﾃﾅﾆﾇﾈﾊﾋﾎﾏﾐﾑﾒﾓﾔﾕﾗﾘﾜ9876543210<>{}[]/=+-*~#!$%';
+  const fontSize = 14;
+  let columns = Math.floor(width / fontSize);
+  let drops = [];
+
+  function resetDrops() {
+    columns = Math.floor(width / fontSize);
+    drops = [];
+    for (let i = 0; i < columns; i++) {
+      drops[i] = Math.floor(Math.random() * -100);
+    }
+  }
+  resetDrops();
+  window.addEventListener('resize', resetDrops);
+
+  let frameCount = 0;
+  function renderMatrix() {
+    frameCount++;
+    // Draw semi-transparent background to create trailing fade effect
+    ctx.fillStyle = 'rgba(2, 4, 8, 0.12)';
+    ctx.fillRect(0, 0, width, height);
+
+    ctx.font = `${fontSize}px "JetBrains Mono", monospace`;
+
+    for (let i = 0; i < drops.length; i++) {
+      const char = chars.charAt(Math.floor(Math.random() * chars.length));
+      const x = i * fontSize;
+      const y = drops[i] * fontSize;
+
+      // Leading character glows bright cyan or pink, trails are neon green or cyan
+      if (Math.random() > 0.94) {
+        ctx.fillStyle = '#00f0ff';
+        ctx.shadowColor = '#00f0ff';
+        ctx.shadowBlur = 8;
+      } else if (Math.random() > 0.88) {
+        ctx.fillStyle = '#ff007f';
+        ctx.shadowColor = '#ff007f';
+        ctx.shadowBlur = 6;
+      } else {
+        ctx.fillStyle = '#00ff66';
+        ctx.shadowBlur = 0;
+      }
+
+      if (y > 0) {
+        ctx.fillText(char, x, y);
+      }
+
+      if (y > height && Math.random() > 0.985) {
+        drops[i] = 0;
+      }
+      drops[i]++;
+    }
+
+    requestAnimationFrame(renderMatrix);
+  }
+
+  requestAnimationFrame(renderMatrix);
+})();
+
+
