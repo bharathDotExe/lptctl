@@ -44,7 +44,7 @@ if (Test-Path $IdentityFile) {
             $unenrollUrl = "$($identity.BackendUrl.TrimEnd('/'))/api/devices/$($identity.DeviceId)/unenroll"
             [System.Net.ServicePointManager]::SecurityProtocol = [System.Net.SecurityProtocolType]::Tls12 -bor [System.Net.SecurityProtocolType]::Tls13
             Invoke-RestMethod -Uri $unenrollUrl -Method Post -Headers @{ Authorization = "Device $($identity.DeviceToken)" } -TimeoutSec 5 -ErrorAction SilentlyContinue | Out-Null
-            Write-Host "      ✓ Device successfully un-enrolled and removed from dashboard" -ForegroundColor Green
+            Write-Host "      [OK] Device successfully un-enrolled and removed from dashboard" -ForegroundColor Green
         }
     }
     catch {
